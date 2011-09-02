@@ -1,0 +1,294 @@
+#! /usr/bin/perl
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# package Tmp version 1.0
+#
+# Create temporary files/directories and ensures they are removed at
+# program end.
+#
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+{
+  package Tmp;
+
+  use File::Temp;
+  use strict 'vars';
+
+  sub new
+  {
+    my $self = {};
+    my $save_tmp = shift;
+
+    bless $self;
+
+    my $x = $0;
+    $x =~ s#.*/##;
+    $x =~ s/(\s+|"|\\|')/_/;
+    $x = 'tmp' if$x eq "";
+
+    my $t = File::Temp::tempdir("/tmp/$x.XXXXXXXX", CLEANUP => $save_tmp ? 0 : 1);
+
+    $self->{base} = $t;
+
+    if(!$save_tmp) {
+      my $s_t = $SIG{TERM};
+      $SIG{TERM} = sub { File::Temp::cleanup; &$s_t if $s_t };
+
+      my $s_i = $SIG{INT};
+      $SIG{INT} = sub { File::Temp::cleanup; &$s_i if $s_i };
+    }
+
+    return $self
+  }
+
+  sub dir
+  {
+    my $self = shift;
+    my $dir = shift;
+    my $t;
+
+    if($dir ne "" && !-e("$self->{base}/$dir")) {
+      $t = "$self->{base}/$dir";
+      die "error: mktemp failed\n" unless mkdir $t, 0755;
+    }
+    else {
+      chomp ($t = `mktemp -d $self->{base}/XXXX`);
+      die "error: mktemp failed\n" if $?;
+    }
+
+    return $t;
+  }
+
+  sub file
+  {
+    my $self = shift;
+    my $file = shift;
+    my $t;
+
+    if($file ne "" && !-e("$self->{base}/$file")) {
+      $t = "$self->{base}/$file";
+      open my $f, ">$t";
+      close $f;
+    }
+    else {
+      chomp ($t = `mktemp $self->{base}/XXXX`);
+      die "error: mktemp failed\n" if $?;
+    }
+
+    return $t;
+  }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+use Getopt::Long;
+
+sub usage;
+
+$opt_prio = 50;
+
+GetOptions(
+  'arch|a=s'    => \$opt_arch,
+  'dist|d=s'    => \$opt_dist,
+  'install|i=s' => \$opt_install,
+  'prio|p=i'    => \$opt_prio,
+) || usage 1;
+
+usage 1 if @ARGV < 2;
+
+$dud = shift;
+
+die "error: dist arg is required\n" unless $opt_dist;
+
+if($opt_dist =~ /^sle[ds]?(\d+)$/i) {
+  @dists = ("sles$1", "sled$1");
+}
+else {
+  @dists = ($opt_dist)
+}
+
+$opt_arch = "i386" if $opt_arch =~ /^i.86$/;
+
+$opt_install = 'both' unless $opt_install eq 'legacy' || $opt_install eq 'repo' || $opt_install eq 'none';
+
+$tmp = Tmp::new(0);
+
+$tmp_dud = $tmp->dir('dud');
+$tmp_err = $tmp->file('err');
+$tmp_cpio = $tmp->file('dud.cpio.gz');
+
+for (@ARGV) {
+  $f = `rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $_ 2>$tmp_err`;
+  if($f eq "") {
+    print STDERR "failed to read rpm: $_\n";
+    open $x, $tmp_err;
+    print STDERR $_ while (<$x>);
+    close $x;
+    exit 1;
+  }
+
+  $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
+  $ar = "i386" if $ar =~ /^i.86$/;
+
+  $arch{$ar} = 1 if $ar;
+
+  $d = `rpm -qp --qf '%{BUILDTIME}' $_ 2>$tmp_err`;
+  $d = gmtime $d if $d;
+
+  push @rpms, [ $_, $f, $d, $ar ];
+}
+
+delete $arch{noarch};
+
+%arch = ( $opt_arch => 1 ) if $opt_arch;
+
+$dist = shift @dists;
+
+mkdir "$tmp_dud/linux", 0755;
+mkdir "$tmp_dud/linux/suse", 0755;
+
+$log = "";
+
+for $ar (sort keys %arch) {
+  $log .= "$ar-$dist";
+  $base = "$tmp_dud/linux/suse/$ar-$dist";
+  mkdir $base, 0755;
+  mkdir "$base/inst-sys", 0755;
+  mkdir "$base/install", 0755;
+  for (@dists) {
+    $log .= ", $ar-$_";
+    symlink "$ar-$dist", "$tmp_dud/linux/suse/$ar-$_";
+  }
+
+  $log .= ":\n";
+
+  $id = sprintf("%06x%06x%04x", rand(1<<24), rand(1<<24), rand(1<<16));
+
+  open $f, ">$base/dud.config";
+  print $f "UpdateID:\t$id\n";
+  for (@rpms) {
+    if($_->[3] eq $ar || $_->[3] eq 'noarch' || $opt_arch) {
+      $log .= "  $_->[1].rpm\n";
+      print $f "UpdateName:\t$_->[1]\t$_->[2]\n";
+      system "cp $_->[0] $base/install/$_->[1].rpm" if $opt_install ne 'none';
+      system "rpm2cpio $_->[0] | ( cd $base/inst-sys ; cpio --quiet --sparse -dimu --no-absolute-filenames )";
+      system "chmod 755 `find $base/inst-sys -type d`";
+    }
+  }
+  close $f;
+
+  if($opt_install eq 'repo' || $opt_install eq 'both') {
+    $c = <<'    update.pre';
+#! /usr/bin/perl
+
+$dst = "/add_on_products.xml";
+
+$prio = _prio_;
+
+($base = $0) =~ s#(/[^/]*){2}$##;
+($id = $base) =~ s#^.*/##;
+
+mkdir "$base/repo", 0755;
+system "mv $base/install/*.rpm $base/repo";
+
+$id += 0;
+$id3 = sprintf "%03u", $id;
+
+@f = split /^/m, <<'# template';
+<?xml version="1.0"?>
+<add_on_products xmlns="http://www.suse.com/1.0/yast2ns"
+    xmlns:config="http://www.suse.com/1.0/configns">
+    <product_items config:type="list">
+    </product_items>
+</add_on_products>
+# template
+
+$product = <<"# product";
+        <product_item>
+            <name>Driver Update $id</name>
+            <url>dir:///update/$id3/repo?alias=DriverUpdate$id</url>
+            <priority config:type="integer">$prio</priority>
+        </product_item>
+# product
+
+@f = (<F>) if open F, $dst;
+
+open F, ">", $dst;
+for (@f) {
+  print F $product if m#\s*</product_items>#;
+  print F;
+}
+close F;
+
+    update.pre
+
+    $c =~ s/_prio_/$opt_prio/;
+    $c =~ s/"mv /"ln / if $opt_install eq 'both';
+
+    open $f, ">$base/install/update.pre";
+    print $f $c;
+    close $f;
+
+    $c = <<'    update.post2';
+#! /bin/bash
+
+dir=${0%/*/*}
+dir=${dir#/*/}
+
+repo="baseurl=dir:///$dir/repo"
+
+for i in `grep -l $repo /etc/zypp/repos.d/*` ; do
+  [ -f "$i" ] && rm "$i"
+done
+    update.post2
+
+    open $f, ">$base/install/update.post2";
+    print $f $c;
+    close $f;
+  }
+
+  $log .= "Package install method: ";
+  if($opt_install eq 'none') {
+    $log .= "none\n";
+  }
+  elsif($opt_install eq 'legacy') {
+    $log .= "legacy\n";
+  }
+  elsif ($opt_install eq 'both') {
+    $log .= "add-on repo & legacy\n";
+  }
+  else {
+    $log .= "add-on repo\n";
+  }
+
+  $log .= sprintf "Repo priority: %d\n", $opt_prio if $opt_install eq 'repo' || $opt_install eq 'both';
+}
+
+system "cd $tmp_dud ; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
+system "cp $tmp_cpio $dud";
+
+print $log;
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub usage
+{
+  print <<"  usage";
+Usage: rpm2dud [options] dud rpm1 rpm2 ...
+Create driver update that updates rpms in the installation environment and the
+final installed system
+
+Options:
+
+  -a, --arch ARCH       Use ARCH (default: taken from rpms).
+  -d, --dist DIST       Either openSUSE version (e.g. 12.1) or SLE version (e.g. sle11).
+  -p, --prio PRIO       Set repo priority to PRIO (default: 50).
+  -i, --install METHOD  Package install method. METHOD is one of: none,legacy,repo,both
+                        (default: both).
+
+  usage
+
+  exit shift;
+}
+
+
+ 

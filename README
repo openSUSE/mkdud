@@ -1,0 +1,51 @@
+If you need to update packages during installation via driver update, either
+in the installation environment or the final installed system, this script
+helps you to setup such a driver update.
+
+There are two ways for this:
+
+(a) The old ('legacy') way: place all rpms into the 'install' directory and
+    YaST will run an 'rpm -U install/*.rpm' at the end of the first stage of
+    the installation.
+
+(b) Since SLE11/openSUSE 12.1 YaST lets you register a repository
+    automatically. The repo priority can be set higher (numerically lower)
+    than the default priority (99) to ensure the driver update packages are
+    preferred.
+
+Method (b) has the advantage that the old packages are never installed and
+used and conficts and dependencies are automatically resolved (think of
+different kernel flavors).
+
+This script supports both ways.
+
+Examples:
+
+
+(1)
+- update perl-Bootloader with method (a) _and_ (b), repo priority is 50:
+# rpm2dud -d sle11 foo1.dud perl-Bootloader.rpm
+
+
+(2)
+- update perl-Bootloader and yast2-bootloader for both i586 and x86_64, using
+  only method (b), repo priority is 90:
+
+# ls perl-Bootloader/binaries/* yast2-bootloader/binaries/*
+perl-Bootloader/binaries/perl-Bootloader-0.4.89.30-1.10.i586.rpm
+yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.i586.rpm
+perl-Bootloader/binaries/perl-Bootloader-0.4.89.30-1.10.x86_64.rpm
+yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
+
+# rpm2dud -i repo -p 90 -d sle11 foo2.dud perl-Bootloader/binaries/* yast2-bootloader/binaries/*
+
+
+(3)
+- replace yast2-bootloader only in the installation system, for i586 and x86_64:
+
+# ls yast2-bootloader/binaries/*
+yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.i586.rpm
+yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
+
+# rpm2dud -i none -d sle11 foo3.dud yast2-bootloader/binaries/*
+
