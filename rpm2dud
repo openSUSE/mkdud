@@ -83,6 +83,7 @@
 use Getopt::Long;
 
 sub usage;
+sub file_type;
 
 $opt_prio = 50;
 
@@ -91,6 +92,8 @@ GetOptions(
   'dist|d=s'    => \$opt_dist,
   'install|i=s' => \$opt_install,
   'prio|p=i'    => \$opt_prio,
+  'name|n=s'    => \$opt_name,
+  'exec|x=s'    => \$opt_exec,
 ) || usage 1;
 
 usage 1 if @ARGV < 2;
@@ -117,24 +120,35 @@ $tmp_err = $tmp->file('err');
 $tmp_cpio = $tmp->file('dud.cpio.gz');
 
 for (@ARGV) {
-  $f = `rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $_ 2>$tmp_err`;
-  if($f eq "") {
-    print STDERR "failed to read rpm: $_\n";
-    open $x, $tmp_err;
-    print STDERR $_ while (<$x>);
-    close $x;
-    exit 1;
+  $t = file_type $_;
+  if($t->[0] eq 'rpm') {
+    $f = `rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $_ 2>$tmp_err`;
+    if($f eq "") {
+      print STDERR "failed to read rpm: $_\n";
+      open $x, $tmp_err;
+      print STDERR $_ while (<$x>);
+      close $x;
+      exit 1;
+    }
+
+    $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
+    $ar = "i386" if $ar =~ /^i.86$/;
+
+    $arch{$ar} = 1 if $ar;
+
+    $d = `rpm -qp --qf '%{BUILDTIME}' $_ 2>$tmp_err`;
+    $d = gmtime $d if $d;
+
+    push @rpms, [ $_, $f, $d, $ar, $t->[0] ];
   }
+  else {
+    $ar = $t->[1];
+    $ar = "i386" if $ar =~ /^i.86$/;
+    $ar = "x86_64" if $ar eq "x86-64";
+    $arch{$ar} = 1 if $ar;
 
-  $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
-  $ar = "i386" if $ar =~ /^i.86$/;
-
-  $arch{$ar} = 1 if $ar;
-
-  $d = `rpm -qp --qf '%{BUILDTIME}' $_ 2>$tmp_err`;
-  $d = gmtime $d if $d;
-
-  push @rpms, [ $_, $f, $d, $ar ];
+    push @files, [ $_, undef, undef, $ar, $t->[0] ];
+  }
 }
 
 delete $arch{noarch};
@@ -152,7 +166,7 @@ for $ar (sort keys %arch) {
   $log .= "$ar-$dist";
   $base = "$tmp_dud/linux/suse/$ar-$dist";
   mkdir $base, 0755;
-  mkdir "$base/inst-sys", 0755;
+  mkdir "$base/inst-sys", 0755 if @rpms;
   mkdir "$base/install", 0755;
   for (@dists) {
     $log .= ", $ar-$_";
@@ -174,9 +188,51 @@ for $ar (sort keys %arch) {
       system "chmod 755 `find $base/inst-sys -type d`";
     }
   }
+  if(@files) {
+    if($opt_name) {
+      print $f "UpdateName:\t$opt_name\n";
+    }
+    else {
+      print $f "UpdateName:\tUnnamed update $id\n";
+    }
+    print $f "Exec:\t\t/update/*/install/$id.sh\n";
+  }
   close $f;
 
-  if($opt_install eq 'repo' || $opt_install eq 'both') {
+  $c = <<'  install.sh';
+#! /bin/bash
+
+# locate the dud directory
+dud=${0%/install/*}
+
+[ -d "$dud" ] || exit 1
+
+PATH=$dud/install:/bin:/sbin:/usr/bin:/usr/sbin
+
+cd $dud/install
+
+<binary>
+
+# remove driver update when we're done
+# rm -rf $dud/*
+  install.sh
+
+  if($opt_exec) {
+    $c =~ s#<binary>#$opt_exec#;
+  }
+  else {
+    $bin = $files[0][0];
+    $bin =~ s#.*/##;
+    $c =~ s#<binary>#./$bin#;
+  }
+
+  open $f, ">$base/install/$id.sh";
+  print $f $c;
+  close $f;
+
+  chmod 0755, "$base/install/$id.sh";
+
+  if(@rpms && ($opt_install eq 'repo' || $opt_install eq 'both')) {
     $c = <<'    update.pre';
 #! /usr/bin/perl
 
@@ -246,21 +302,31 @@ done
     close $f;
   }
 
-  $log .= "Package install method: ";
-  if($opt_install eq 'none') {
-    $log .= "none\n";
-  }
-  elsif($opt_install eq 'legacy') {
-    $log .= "legacy\n";
-  }
-  elsif ($opt_install eq 'both') {
-    $log .= "add-on repo & legacy\n";
-  }
-  else {
-    $log .= "add-on repo\n";
+  if(@rpms) {
+    $log .= "Package install method: ";
+    if($opt_install eq 'none') {
+      $log .= "none\n";
+    }
+    elsif($opt_install eq 'legacy') {
+      $log .= "legacy\n";
+    }
+    elsif ($opt_install eq 'both') {
+      $log .= "add-on repo & legacy\n";
+    }
+    else {
+      $log .= "add-on repo\n";
+    }
+
+    $log .= sprintf "Repo priority: %d\n", $opt_prio if $opt_install eq 'repo' || $opt_install eq 'both';
   }
 
-  $log .= sprintf "Repo priority: %d\n", $opt_prio if $opt_install eq 'repo' || $opt_install eq 'both';
+  if(@files) {
+    for (@files) {
+      $log .= "  $_->[0]\n";
+      system "cp $_->[0] $base/install/";
+    }
+  }
+
 }
 
 system "cd $tmp_dud ; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
@@ -277,18 +343,51 @@ Usage: rpm2dud [options] dud rpm1 rpm2 ...
 Create driver update that updates rpms in the installation environment and the
 final installed system
 
-Options:
+Instead of rpms you can also specify any other files. In that case the file
+is added to the driver update's 'install' directory.
 
+Options:
   -a, --arch ARCH       Use ARCH (default: taken from rpms).
   -d, --dist DIST       Either openSUSE version (e.g. 12.1) or SLE version (e.g. sle11).
   -p, --prio PRIO       Set repo priority to PRIO (default: 50).
+  -n, --name NAME       Set driver update name.
+  -x, --exec FILE       Execute FILE in driver update.
   -i, --install METHOD  Package install method. METHOD is one of: none,legacy,repo,both
                         (default: both).
+
+Examples:
+  # update foo & bar rpms
+  rpm2dud -d sle11 foo.dud foo.rpm bar.rpm
+
+  # update foo & bar rpms; add and run setup.sh script
+  rpm2dud -d sle11 -x setup.sh foo.dud foo.rpm bar.rpm setup.sh
+
+Note:
+  If the architecture can't be determined from the rpm (e.g. noarch) you
+  have to explicitly use the '-a' option.
 
   usage
 
   exit shift;
 }
 
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub file_type
+{
+  local $_;
+  my @i;
+
+  $_ = `file -L $_[0] 2>/dev/null`;
+  s/^.*:\s*//;
+  return [ 'rpm', undef ] if /^RPM/;
+  if(/^ELF/) {
+    @i = split /\s*,\s*/;
+    return [ 'bin', $i[1] ] if @i[0] =~ /executable/;
+    return [ 'lib', $i[1] ] if @i[0] =~ /shared/;
+  }
+
+  return [ undef, undef ];
+}
 
  
