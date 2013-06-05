@@ -1,3 +1,17 @@
+This is about driver updates. If you're not familiar with them, please look at
+
+  http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/index.html
+
+and
+
+  http://en.opensuse.org/SDB:Linuxrc#p_driverupdate
+
+first.
+
+
+1. Updating RPMs
+----------------
+
 If you need to update packages during installation via driver update, either
 in the installation environment or the final installed system, this script
 helps you to setup such a driver update.
@@ -48,4 +62,22 @@ yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.i586.rpm
 yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
 
 # rpm2dud -i none -d sle11 foo3.dud yast2-bootloader/binaries/*
+
+
+2. Adding and running programms
+-------------------------------
+
+Sometimes you need to include and run a script to fix things. For example
+
+# rpm2dud -d sle11 -x bar foo4.dud bar
+
+adds 'bar' to the 'install' directory and runs it. Unlike the 'update.pre'
+script it is run just after the dud has been read, even _before_ any dud
+modules are loaded.
+
+You can combine this with rpms:
+
+# rpm2dud -i none -d sle11 -x fix_it foo5.dud yast2-bootloader/binaries/* fix_it
+
+This replaces yast2-bootloader and also adds and runs the 'fix_it' script.
 

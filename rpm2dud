@@ -217,20 +217,22 @@ cd $dud/install
 # rm -rf $dud/*
   install.sh
 
-  if($opt_exec) {
-    $c =~ s#<binary>#$opt_exec#;
-  }
-  else {
-    $bin = $files[0][0];
-    $bin =~ s#.*/##;
-    $c =~ s#<binary>#./$bin#;
-  }
+  if(@files) {
+    if($opt_exec) {
+      $c =~ s#<binary>#$opt_exec#;
+    }
+    else {
+      $bin = $files[0][0];
+      $bin =~ s#.*/##;
+      $c =~ s#<binary>#./$bin#;
+    }
 
-  open $f, ">$base/install/$id.sh";
-  print $f $c;
-  close $f;
+    open $f, ">$base/install/$id.sh";
+    print $f $c;
+    close $f;
 
-  chmod 0755, "$base/install/$id.sh";
+    chmod 0755, "$base/install/$id.sh";
+  }
 
   if(@rpms && ($opt_install eq 'repo' || $opt_install eq 'both')) {
     $c = <<'    update.pre';
