@@ -2,7 +2,7 @@ GIT2LOG	:= $(shell if [ -x ./git2log ] ; then echo ./git2log --update ; else ech
 GITDEPS	:= $(shell [ -d .git ] && echo .git/HEAD .git/refs/heads .git/refs/tags)
 VERSION	:= $(shell $(GIT2LOG) --version VERSION ; cat VERSION)
 BRANCH	:= $(shell git branch | perl -ne 'print $$_ if s/^\*\s*//')
-PREFIX	:= rpm2dud-$(VERSION)
+PREFIX	:= mkdud-$(VERSION)
 
 all:    changelog
 	mkdir -p package

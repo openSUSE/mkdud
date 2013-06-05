@@ -94,6 +94,7 @@ GetOptions(
   'prio|p=i'    => \$opt_prio,
   'name|n=s'    => \$opt_name,
   'exec|x=s'    => \$opt_exec,
+  'may-replace-yast' => \$opt_replace_yast,
 ) || usage 1;
 
 usage 1 if @ARGV < 2;
@@ -199,6 +200,18 @@ for $ar (sort keys %arch) {
   }
   close $f;
 
+  if(-e "$base/inst-sys/sbin/yast" ) {
+    if($opt_replace_yast) {
+      print STDERR "Warning: driver update replaces /sbin/yast.\n";
+    }
+    else {
+      print STDERR
+        "Warning: driver update tries to replace /sbin/yast.\n" .
+        "If you really want to do this, use --may-replace-yast.\n";
+      unlink "$base/inst-sys/sbin/yast";
+    }
+  }
+
   $c = <<'  install.sh';
 #! /bin/bash
 
@@ -206,6 +219,8 @@ for $ar (sort keys %arch) {
 dud=${0%/install/*}
 
 [ -d "$dud" ] || exit 1
+
+export dud
 
 PATH=$dud/install:/bin:/sbin:/usr/bin:/usr/sbin
 
@@ -341,28 +356,30 @@ print $log;
 sub usage
 {
   print <<"  usage";
-Usage: rpm2dud [options] dud rpm1 rpm2 ...
+Usage: mkdud [options] dud source1 source2 ...
 Create driver update that updates rpms in the installation environment and the
-final installed system
+final installed system.
 
-Instead of rpms you can also specify any other files. In that case the file
-is added to the driver update's 'install' directory.
+source may be an rpm or normal file. rpms are added and updated, normal files are
+added to the driver update's 'install' directory.
 
 Options:
-  -a, --arch ARCH       Use ARCH (default: taken from rpms).
-  -d, --dist DIST       Either openSUSE version (e.g. 12.1) or SLE version (e.g. sle11).
-  -p, --prio PRIO       Set repo priority to PRIO (default: 50).
-  -n, --name NAME       Set driver update name.
-  -x, --exec FILE       Execute FILE in driver update.
-  -i, --install METHOD  Package install method. METHOD is one of: none,legacy,repo,both
-                        (default: both).
+  -a, --arch ARCH         Use ARCH (default: taken from rpms).
+  -d, --dist DIST         Either openSUSE version (e.g. 12.1) or SLE version (e.g. sle11).
+  -p, --prio PRIO         Set repo priority to PRIO (default: 50).
+  -n, --name NAME         Set driver update name.
+  -x, --exec FILE         Execute FILE in driver update.
+  -i, --install METHOD    Package install method. METHOD is one of: none,legacy,repo,both
+                          (default: both).
+      --may-replace-yast  Allow to update /sbin/yast in the installation system
+                          (usually a really bad idea).
 
 Examples:
   # update foo & bar rpms
-  rpm2dud -d sle11 foo.dud foo.rpm bar.rpm
+  mkdud -d sle11 foo.dud foo.rpm bar.rpm
 
   # update foo & bar rpms; add and run setup.sh script
-  rpm2dud -d sle11 -x setup.sh foo.dud foo.rpm bar.rpm setup.sh
+  mkdud -d sle11 -x setup.sh foo.dud foo.rpm bar.rpm setup.sh
 
 Note:
   If the architecture can't be determined from the rpm (e.g. noarch) you
