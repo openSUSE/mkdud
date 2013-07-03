@@ -117,8 +117,12 @@ $opt_install = 'both' unless $opt_install eq 'legacy' || $opt_install eq 'repo' 
 $tmp = Tmp::new(0);
 
 $tmp_dud = $tmp->dir('dud');
+$tmp_old = $tmp->dir('old');
+$tmp_new = $tmp->dir('new');
 $tmp_err = $tmp->file('err');
 $tmp_cpio = $tmp->file('dud.cpio.gz');
+
+$old_duds = 0;
 
 for (@ARGV) {
   $t = file_type $_;
@@ -141,6 +145,9 @@ for (@ARGV) {
     $d = gmtime $d if $d;
 
     push @rpms, [ $_, $f, $d, $ar, $t->[0] ];
+  }
+  elsif($t->[0] eq 'dud') {
+    # nothing to do
   }
   else {
     $ar = $t->[1];
@@ -343,11 +350,27 @@ done
       system "cp $_->[0] $base/install/";
     }
   }
-
 }
 
-system "cd $tmp_dud ; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
-system "cp $tmp_cpio $dud";
+push @duds, [ undef, $tmp_dud ] if @rpms != 0 || @files != 0 || $opt_exec;
+
+die "oops: nothing to do\n" if @duds == 0;
+
+if(@duds == 1) {
+  system "cd $duds[0][1] ; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
+  system "cp $tmp_cpio $dud";
+}
+else {
+  $dud_cnt = 0;
+  for my $d (@duds) {
+    my $n = sprintf "%s/%04d", $tmp_new, ++$dud_cnt;
+    die "$n: $!\n" unless mkdir $n;
+    die "$d->[1]/linux -> $n/linux: $!" unless rename "$d->[1]/linux", "$n/linux";
+  }
+
+  system "cd $tmp_new; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
+  system "cp $tmp_cpio $dud";
+}
 
 print $log;
 
@@ -395,15 +418,49 @@ Note:
 sub file_type
 {
   local $_;
+  my $dud;
   my @i;
 
   $_ = `file -L $_[0] 2>/dev/null`;
-  s/^.*:\s*//;
+  s/^[^:]*:\s*//;
+
   return [ 'rpm', undef ] if /^RPM/;
+
   if(/^ELF/) {
     @i = split /\s*,\s*/;
     return [ 'bin', $i[1] ] if @i[0] =~ /executable/;
     return [ 'lib', $i[1] ] if @i[0] =~ /shared/;
+  }
+
+  if(/ cpio archive /) {
+    $dud = "cpio";
+  }
+
+  if(/^gzip compressed data/) {
+    my $z = `gunzip -c $_[0] | file -`;
+    $z =~ s/^.*:\s*//;
+    $dud = "cpio.gz" if $z =~ / cpio archive /;
+  }
+
+  if($dud) {
+    my $old = sprintf "%s/%04d", $tmp_old, $old_duds++;
+    die "$old: $!\n" unless mkdir $old;
+    if($dud eq "cpio") {
+      system "cat $_[0] | ( cd $old ; cpio --quiet -dmiu )";
+    }
+    elsif($dud eq "cpio.gz") {
+      system "gunzip -c $_[0] | ( cd $old ; cpio --quiet -dmiu )";
+    }
+
+    my $dud_ok = 0;
+    for (<$old/linux $old/[0-9]*/linux>) {
+      next if ! -d $_;
+      $_ =~ s#/linux$##;
+      push @duds, [ $_[0], $_ ];
+      $dud_ok = 1;
+    }
+
+    return [ "dud", undef ] if $dud_ok;
   }
 
   return [ undef, undef ];
