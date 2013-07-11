@@ -80,299 +80,156 @@
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+use strict;
+
 use Getopt::Long;
+use File::Find;
+use File::Path;
+use Cwd 'abs_path';
+
+use Data::Dumper;
+$Data::Dumper::Sortkeys = 1;
+$Data::Dumper::Terse = 1;
+$Data::Dumper::Indent = 1;
+
+our $VERSION = "1.01";
+
+my @all_archs = ( "x86_64", "i386", "ppc64", "ppc", "s390x", "s390", "ia64" );
 
 sub usage;
+sub get_file_arch;
 sub file_type;
+sub copy_dud;
+sub analyze_dud;
+sub cleanup_old_duds;
+sub new_dud;
+sub analyze_ycp_files;
+sub write_dud;
+sub fix_duds;
+sub show_dud;
+sub nice_arch_list;
+sub show_single_dir;
 
-$opt_prio = 50;
+my $opt_create;
+my $opt_show;
+my @opt_dist;
+my @opt_arch;
+my $opt_prio = 50;
+my @opt_name;
+my @opt_exec;
+my @opt_doc;
+my $opt_replace_yast;
+my $opt_save_temp;
+my %opt_install;
+my @opt_config;
+
+# global variables
+my $dud;
+my @files;
+my @dists;
+my $dud_cnt = 0;
+my %arch;
+my $use_all_archs = 0;
 
 GetOptions(
-  'arch|a=s'    => \$opt_arch,
-  'dist|d=s'    => \$opt_dist,
-  'install|i=s' => \$opt_install,
-  'prio|p=i'    => \$opt_prio,
-  'name|n=s'    => \$opt_name,
-  'exec|x=s'    => \$opt_exec,
+  'create|c=s'       => sub { $opt_create = 1; $dud = $_[1] },
+  'show|s=s'         => sub { $opt_show = 1; $dud = $_[1] },
+  'arch|a=s'         => \@opt_arch,
+  'dist|d=s'         => \@opt_dist,
+  'install|i=s'      => sub { if($_[1] ne "") { @opt_install{split /,/, $_[1]} = ( 1 .. 7 ) } else { $opt_install{""} = 1 } },
+  'prio|p=i'         => \$opt_prio,
+  'name|n=s'         => \@opt_name,
+  'exec|x=s'         => \@opt_exec,
+  'config=s'         => \@opt_config,
+  'doc=s'            => \@opt_doc,
   'may-replace-yast' => \$opt_replace_yast,
+  'save-temp'        => \$opt_save_temp,
+  'help'             => sub { usage 0 },
 ) || usage 1;
 
-usage 1 if @ARGV < 2;
-
-$dud = shift;
-
-die "error: dist arg is required\n" unless $opt_dist;
-
-if($opt_dist =~ /^sle[ds]?(\d+)$/i) {
-  @dists = ("sles$1", "sled$1");
-}
-else {
-  @dists = ($opt_dist)
+if(!%opt_install) {
+  @opt_install{qw ( instsys repo rpm )} = ( 1, 1, 1 );
 }
 
-$opt_arch = "i386" if $opt_arch =~ /^i.86$/;
+for (sort keys %opt_install) {
+  usage 1 unless /^(instsys|repo|rpm|$)/;
+}
 
-$opt_install = 'both' unless $opt_install eq 'legacy' || $opt_install eq 'repo' || $opt_install eq 'none';
+usage 1 unless $opt_show xor $opt_create;
 
-$tmp = Tmp::new(0);
+usage 2 if $opt_show && @ARGV;
 
-$tmp_dud = $tmp->dir('dud');
-$tmp_old = $tmp->dir('old');
-$tmp_new = $tmp->dir('new');
-$tmp_err = $tmp->file('err');
-$tmp_cpio = $tmp->file('dud.cpio.gz');
+@opt_arch = map { /^i.86$/ ? "i386" : $_ } @opt_arch;
 
-$old_duds = 0;
+my $tmp = Tmp::new($opt_save_temp);
 
-for (@ARGV) {
-  $t = file_type $_;
-  if($t->[0] eq 'rpm') {
-    $f = `rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $_ 2>$tmp_err`;
-    if($f eq "") {
-      print STDERR "failed to read rpm: $_\n";
-      open $x, $tmp_err;
-      print STDERR $_ while (<$x>);
-      close $x;
-      exit 1;
-    }
+my $tmp_dud = $tmp->dir('dud');
+my $tmp_old = $tmp->dir('old');
+my $tmp_new = $tmp->dir('new');
+my $tmp_mnt = $tmp->dir('mnt');
+my $tmp_err = $tmp->file('err');
+my $tmp_cpio = $tmp->file('dud.cpio.gz');
 
-    $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
-    $ar = "i386" if $ar =~ /^i.86$/;
+if($opt_create) {
+  file_type $_ for (@ARGV);
 
-    $arch{$ar} = 1 if $ar;
-
-    $d = `rpm -qp --qf '%{BUILDTIME}' $_ 2>$tmp_err`;
-    $d = gmtime $d if $d;
-
-    push @rpms, [ $_, $f, $d, $ar, $t->[0] ];
+  my $need_dist;
+  for (@files) {
+    $need_dist = 1, last if $_->{type} ne "dud";
   }
-  elsif($t->[0] eq 'dud') {
-    # nothing to do
+
+  if($need_dist) {
+    die "Error: distribution arg is required; use --dist.\n" if !@opt_dist;
+    my %d;
+    @d{map { /^sle?(\d+)$/i ? ("sles$1", "sled$1") : "\L$_" } @opt_dist} = ();
+    @dists = sort keys %d;
+  }
+
+  # cleanup old driver update sources
+  File::Find::find(sub {
+   unlink $File::Find::name if $_ eq 'TRANS.TBL';
+  }, $tmp_old);
+
+  for (@files) {
+    $arch{$_->{arch}} = 1 if defined $_->{arch};
+  }
+
+  @arch{@opt_arch} = () if @opt_arch;
+
+  if(!%arch) {
+    %arch = ( $all_archs[0] => 1 );
+    $use_all_archs = 1;  
+  }
+
+  fix_duds \@files;
+
+  if(new_dud()) {
+    unshift @files, { type => 'dud', file => $tmp_dud };
+  }
+
+  # print STDERR Dumper(\@files);
+
+  $dud = write_dud \@files, $dud;
+
+  exit 0 unless defined $dud;
+
+  undef @files;
+}
+
+file_type $dud;
+
+# print STDERR Dumper(\@files);
+
+$dud_cnt = 0;
+
+for (@files) {
+  if($_->{type} eq 'dud') {
+    show_dud $_;
   }
   else {
-    $ar = $t->[1];
-    $ar = "i386" if $ar =~ /^i.86$/;
-    $ar = "x86_64" if $ar eq "x86-64";
-    $arch{$ar} = 1 if $ar;
-
-    push @files, [ $_, undef, undef, $ar, $t->[0] ];
+    print STDERR "$_->{file}: not a driver update\n";
   }
 }
-
-delete $arch{noarch};
-
-%arch = ( $opt_arch => 1 ) if $opt_arch;
-
-$dist = shift @dists;
-
-mkdir "$tmp_dud/linux", 0755;
-mkdir "$tmp_dud/linux/suse", 0755;
-
-$log = "";
-
-for $ar (sort keys %arch) {
-  $log .= "$ar-$dist";
-  $base = "$tmp_dud/linux/suse/$ar-$dist";
-  mkdir $base, 0755;
-  mkdir "$base/inst-sys", 0755 if @rpms;
-  mkdir "$base/install", 0755;
-  for (@dists) {
-    $log .= ", $ar-$_";
-    symlink "$ar-$dist", "$tmp_dud/linux/suse/$ar-$_";
-  }
-
-  $log .= ":\n";
-
-  $id = sprintf("%06x%06x%04x", rand(1<<24), rand(1<<24), rand(1<<16));
-
-  open $f, ">$base/dud.config";
-  print $f "UpdateID:\t$id\n";
-  for (@rpms) {
-    if($_->[3] eq $ar || $_->[3] eq 'noarch' || $opt_arch) {
-      $log .= "  $_->[1].rpm\n";
-      print $f "UpdateName:\t$_->[1]\t$_->[2]\n";
-      system "cp $_->[0] $base/install/$_->[1].rpm" if $opt_install ne 'none';
-      system "rpm2cpio $_->[0] | ( cd $base/inst-sys ; cpio --quiet --sparse -dimu --no-absolute-filenames )";
-      system "chmod 755 `find $base/inst-sys -type d`";
-    }
-  }
-  if(@files) {
-    if($opt_name) {
-      print $f "UpdateName:\t$opt_name\n";
-    }
-    else {
-      print $f "UpdateName:\tUnnamed update $id\n";
-    }
-    print $f "Exec:\t\t/update/*/install/$id.sh\n";
-  }
-  close $f;
-
-  if(-e "$base/inst-sys/sbin/yast" ) {
-    if($opt_replace_yast) {
-      print STDERR "Warning: driver update replaces /sbin/yast.\n";
-    }
-    else {
-      print STDERR
-        "Warning: driver update tries to replace /sbin/yast.\n" .
-        "If you really want to do this, use --may-replace-yast.\n";
-      unlink "$base/inst-sys/sbin/yast";
-    }
-  }
-
-  $c = <<'  install.sh';
-#! /bin/bash
-
-# locate the dud directory
-dud=${0%/install/*}
-
-[ -d "$dud" ] || exit 1
-
-export dud
-
-PATH=$dud/install:/bin:/sbin:/usr/bin:/usr/sbin
-
-cd $dud/install
-
-<binary>
-
-# remove driver update when we're done
-# rm -rf $dud/*
-  install.sh
-
-  if(@files) {
-    if($opt_exec) {
-      $c =~ s#<binary>#$opt_exec#;
-    }
-    else {
-      $bin = $files[0][0];
-      $bin =~ s#.*/##;
-      $c =~ s#<binary>#./$bin#;
-    }
-
-    open $f, ">$base/install/$id.sh";
-    print $f $c;
-    close $f;
-
-    chmod 0755, "$base/install/$id.sh";
-  }
-
-  if(@rpms && ($opt_install eq 'repo' || $opt_install eq 'both')) {
-    $c = <<'    update.pre';
-#! /usr/bin/perl
-
-$dst = "/add_on_products.xml";
-
-$prio = _prio_;
-
-($base = $0) =~ s#(/[^/]*){2}$##;
-($id = $base) =~ s#^.*/##;
-
-mkdir "$base/repo", 0755;
-system "mv $base/install/*.rpm $base/repo";
-
-$id += 0;
-$id3 = sprintf "%03u", $id;
-
-@f = split /^/m, <<'# template';
-<?xml version="1.0"?>
-<add_on_products xmlns="http://www.suse.com/1.0/yast2ns"
-    xmlns:config="http://www.suse.com/1.0/configns">
-    <product_items config:type="list">
-    </product_items>
-</add_on_products>
-# template
-
-$product = <<"# product";
-        <product_item>
-            <name>Driver Update $id</name>
-            <url>dir:///update/$id3/repo?alias=DriverUpdate$id</url>
-            <priority config:type="integer">$prio</priority>
-        </product_item>
-# product
-
-@f = (<F>) if open F, $dst;
-
-open F, ">", $dst;
-for (@f) {
-  print F $product if m#\s*</product_items>#;
-  print F;
-}
-close F;
-
-    update.pre
-
-    $c =~ s/_prio_/$opt_prio/;
-    $c =~ s/"mv /"ln / if $opt_install eq 'both';
-
-    open $f, ">$base/install/update.pre";
-    print $f $c;
-    close $f;
-
-    $c = <<'    update.post2';
-#! /bin/bash
-
-dir=${0%/*/*}
-dir=${dir#/*/}
-
-repo="baseurl=dir:///$dir/repo"
-
-for i in `grep -l $repo /etc/zypp/repos.d/*` ; do
-  [ -f "$i" ] && rm "$i"
-done
-    update.post2
-
-    open $f, ">$base/install/update.post2";
-    print $f $c;
-    close $f;
-  }
-
-  if(@rpms) {
-    $log .= "Package install method: ";
-    if($opt_install eq 'none') {
-      $log .= "none\n";
-    }
-    elsif($opt_install eq 'legacy') {
-      $log .= "legacy\n";
-    }
-    elsif ($opt_install eq 'both') {
-      $log .= "add-on repo & legacy\n";
-    }
-    else {
-      $log .= "add-on repo\n";
-    }
-
-    $log .= sprintf "Repo priority: %d\n", $opt_prio if $opt_install eq 'repo' || $opt_install eq 'both';
-  }
-
-  if(@files) {
-    for (@files) {
-      $log .= "  $_->[0]\n";
-      system "cp $_->[0] $base/install/";
-    }
-  }
-}
-
-push @duds, [ undef, $tmp_dud ] if @rpms != 0 || @files != 0 || $opt_exec;
-
-die "oops: nothing to do\n" if @duds == 0;
-
-if(@duds == 1) {
-  system "cd $duds[0][1] ; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
-  system "cp $tmp_cpio $dud";
-}
-else {
-  $dud_cnt = 0;
-  for my $d (@duds) {
-    my $n = sprintf "%s/%04d", $tmp_new, ++$dud_cnt;
-    die "$n: $!\n" unless mkdir $n;
-    die "$d->[1]/linux -> $n/linux: $!" unless rename "$d->[1]/linux", "$n/linux";
-  }
-
-  system "cd $tmp_new; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
-  system "cp $tmp_cpio $dud";
-}
-
-print $log;
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -415,55 +272,1162 @@ Note:
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub get_file_arch
+{
+  local $_;
+
+  for (`objdump -f $_[0] 2>/dev/null`) {
+    if(/^architecture:\s*(\S+)/) {
+      my $ar = $1;
+      $ar =~ s/^.*:|,$//g;
+      $ar = "i386" if $ar =~ /^i.86$/;
+      $ar =~ tr/-/_/;
+      return $ar if $ar ne "";
+    }
+  }
+
+  return undef;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 sub file_type
 {
   local $_;
   my $dud;
   my @i;
 
+  if(!-e $_[0]) {
+    print STDERR "$_[0]: error: no such file or directory\n";
+    return;
+  }
+
   $_ = `file -L $_[0] 2>/dev/null`;
   s/^[^:]*:\s*//;
 
-  return [ 'rpm', undef ] if /^RPM/;
+  if(/^RPM/) {
+    my $ft = { type => 'rpm', file => $_[0] };
 
-  if(/^ELF/) {
-    @i = split /\s*,\s*/;
-    return [ 'bin', $i[1] ] if @i[0] =~ /executable/;
-    return [ 'lib', $i[1] ] if @i[0] =~ /shared/;
+    my $f = `rpm --nosignature -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $_[0] 2>$tmp_err`;
+    if($f eq "") {
+      print STDERR "failed to read rpm: $_[0]\n";
+      open my $x, $tmp_err;
+      print STDERR $_ while (<$x>);
+      close $x;
+      exit 1;
+    }
+
+    $ft->{canonical_name} = $f;
+
+    my $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
+    $ar = "i386" if $ar =~ /^i.86$/;
+
+    $ft->{arch} = $ar if defined $ar && $ar ne 'noarch';
+
+    my $d = `rpm --nosignature -qp --qf '%{BUILDTIME}' $_[0] 2>$tmp_err`;
+    $d = gmtime $d if $d;
+
+    $ft->{date} = $d;
+
+    push @files, $ft;
+
+    return;
   }
+  elsif(/^ELF/) {
+    @i = split /\s*,\s*/;
 
-  if(/ cpio archive /) {
+    my $ft = { file => $_[0] };
+
+    my $ar = get_file_arch $_[0];
+    $ft->{arch} = $ar if defined $ar;
+
+    if($i[0] =~ /executable/) {
+      $ft->{type} = 'bin';
+      push @files, $ft;
+    }
+    elsif($i[0] =~ /shared/) {
+      $ft->{type} = 'lib';
+      push @files, $ft;
+    }
+    elsif($_[0] =~ m#\.ko$#) {
+      $ft->{type} = 'module';
+      @i = split " ", `modinfo -F vermagic $_[0] 2>/dev/null`;
+      $ft->{version} = $i[0];
+      my $v = `modinfo -F version $_[0] 2>/dev/null`;
+      chomp $v;
+      $ft->{mod_version} = $v if $v !~ /^\s*$/;
+
+      push @files, $ft;
+    }
+
+    return;
+  }
+  elsif(/ cpio archive /) {
     $dud = "cpio";
   }
-
-  if(/^gzip compressed data/) {
+  elsif(/^gzip compressed data/) {
     my $z = `gunzip -c $_[0] | file -`;
     $z =~ s/^.*:\s*//;
     $dud = "cpio.gz" if $z =~ / cpio archive /;
   }
-
-  if($dud) {
-    my $old = sprintf "%s/%04d", $tmp_old, $old_duds++;
-    die "$old: $!\n" unless mkdir $old;
-    if($dud eq "cpio") {
-      system "cat $_[0] | ( cd $old ; cpio --quiet -dmiu )";
+  elsif(/ ISO 9660 CD-ROM /) {
+    if(!$>) {
+      system "mount -oro,loop $_[0] $tmp_mnt";
+      file_type "$tmp_mnt", 1;
+      system "umount $tmp_mnt";
     }
-    elsif($dud eq "cpio.gz") {
-      system "gunzip -c $_[0] | ( cd $old ; cpio --quiet -dmiu )";
+    else {
+      print STDERR "$_[0]: error: need root permissions to analyze iso images\n";
+    }
+    $dud = 'dummy';
+  }
+  elsif(-d $_[0]) {
+    if($_[0] =~ /(^|\/)y2update\/*$/) {
+      push @files, { type => 'y2update', file => $_[0] };
+
+      return;
     }
 
-    my $dud_ok = 0;
-    for (<$old/linux $old/[0-9]*/linux>) {
-      next if ! -d $_;
-      $_ =~ s#/linux$##;
-      push @duds, [ $_[0], $_ ];
-      $dud_ok = 1;
+    if(-f "$_[0]/driverupdate") {
+      $dud = 'dummy';
+      file_type "$_[0]/driverupdate";
     }
 
-    return [ "dud", undef ] if $dud_ok;
+    if(-d "$_[0]/linux/suse") {
+      $dud = 'dir';
+    }
+    elsif(grep { m#/\d+/linux/suse$# } glob "$_[0]/[0-9]*/linux/suse") {
+      $dud = 'dir';
+    }
+
+    if(!$dud) {
+      my $ft = { type => 'instsys', file => $_[0] };
+
+      File::Find::find(sub {
+        if(-f $_) {
+          my $f = `file -L $_ 2>/dev/null`;
+          $f =~ s/^[^:]*:\s*//;
+
+          if($f =~ /^ELF/) {
+            my $ar = get_file_arch $_;
+            $ft->{arch} = $ar if defined $ar;
+          }
+        }
+      }, $_[0]);
+
+      push @files, $ft;
+
+      return;
+    }
+  }
+  elsif(-f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.order)$#) {
+    push @files, { type => $2, file => $_[0] };
+
+    return;
+  }
+  elsif(-f $_[0] && $_[0] =~ m#(^|/)(.*\.(ycp|ybc))$#) {
+    push @files, { type => $3, file => $_[0] };
+
+    return;
   }
 
-  return [ undef, undef ];
+  elsif(-f $_[0] && -s _ && -T _) {
+    open my $f, $_[0];
+    my $l = <$f>;
+    close $f;
+    if($l =~ /^#!/) {
+      push @files, { type => 'bin', file => $_[0] } if -x $_[0];
+      return;
+    }
+    else {
+      push @files, { type => 'doc', file => $_[0] };
+      return;
+    }
+  }
+
+  if($dud) {
+    my $duds = 0;
+
+    my $old = sprintf "%s/%04d", $tmp_old, $dud_cnt++;
+    die "$old: $!\n" unless mkdir $old;
+    if($dud eq "cpio") {
+      system "cat $_[0] | ( cd $old ; cpio --quiet -dmiu 2>/dev/null)";
+    }
+    elsif($dud eq "cpio.gz") {
+      system "gunzip -c $_[0] | ( cd $old ; cpio --quiet -dmiu 2>/dev/null)";
+    }
+    elsif($dud eq 'dir') {
+      copy_dud $_[0], $old;
+    }
+    elsif($dud eq 'dummy') {
+      $duds = 1;
+    }
+
+    $duds = analyze_dud $old if $dud ne 'dummy';
+
+    return if $duds;
+  }
+
+  print STDERR "$_[0]: error: don't know what to do with it\n" unless $_[1];
 }
 
- 
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub copy_dud
+{
+  local $_;
+  my $src = shift;
+  my $dst = shift;
+  my $file_cnt = 0;
+  my $other_dirs = 0;
+
+  for (<$src/*>) {
+    if(-f $_) { $file_cnt++; next }
+    if(-d $_) {
+      (my $fn = $_) =~ s#^.*/##;
+      if($fn eq 'linux' && -d "$_/suse") {
+        system "cp -r $_ $dst/linux";
+      }
+      elsif($fn =~ /^\d+$/ && -d "$_/linux/suse") {
+        system "cp -r $_ $dst/$fn";
+      }
+      else {
+        $other_dirs++;
+      }
+    }
+  }
+
+  # print "dirs = $other_dirs, files = $file_cnt\n";
+
+  # assume this is a pure driver update and copy the files, too
+  if(!$other_dirs) {
+    for (<$src/*>) {
+      system "cp $_ $dst" if -f $_ && !m#/driverupdate$#;
+    }
+  }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $duds = analyze_dud($dir)
+#
+# Look for driver updates in $dir and register them in file list.
+# Return number of updates found.
+#
+sub analyze_dud
+{
+  local $_;
+  my $src = shift;
+  my $duds = 0;
+  my $global_files = 0;
+
+  if(-d "$src/linux/suse") {
+    my $ft = { type => 'dud', file => $src };
+
+    push @files, $ft;
+
+    $duds++;
+  }
+  else {
+    $global_files = 1;
+  }
+
+  for (<$src/[0-9]*/linux/suse>) {
+    next unless s#(/\d+)/linux/suse$#$1#;
+
+    my $ft = { type => 'dud', file => $_ };
+    if($global_files) {
+      $global_files = 0;
+      $ft->{global_files} = $src;
+    }
+
+    push @files, $ft;
+
+    $duds++;
+  }
+
+  return $duds;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $ok = new_dud($dir)
+#
+sub new_dud
+{
+  local $_;
+
+  my $dud_ok = 0;
+
+  my @dists = @dists;
+  my $dist = shift @dists;
+
+  analyze_ycp_files \@files;
+
+  mkdir "$tmp_dud/linux", 0755;
+  mkdir "$tmp_dud/linux/suse", 0755;
+
+  # one id per update, not for every arch
+  my $id;
+  chomp($id = `uuidgen 2>/dev/null`);
+  $id = sprintf("%06x%06x%04x", rand(1<<24), rand(1<<24), rand(1<<16)) unless $id;
+
+  for my $arch (sort keys %arch) {
+    my $base = "$tmp_dud/linux/suse/$arch-$dist";
+
+    mkdir $base, 0755;
+
+    for (@dists) {
+      symlink "$arch-$dist", "$tmp_dud/linux/suse/$arch-$_";
+    }
+
+    open my $cfg, ">$base/dud.config";
+    print $cfg "# created by mkdud $VERSION\n";
+    print $cfg "UpdateID:\t$id\n";
+
+    my $has_update_name = @opt_name;
+
+    print $cfg "UpdateName:\t$_\n" for (@opt_name);
+
+    # ---------------------------------------------------------
+    # install, inst-sys, modules, y2update
+
+    my @rpms;
+    my $scripts;
+
+    for (@files) {
+      next if $_->{arch} && $_->{arch} ne $arch;
+
+      if($_->{type} eq 'doc') {
+        $dud_ok = 1;
+        system "cp '$_->{file}' $tmp_dud";
+      }
+
+      if($_->{type} eq 'instsys') {
+        $dud_ok = 1;
+        mkdir "$base/inst-sys", 0755;
+        system "cp -a '$_->{file}'/* $base/inst-sys";
+      }
+
+      if($_->{type} eq 'rpm') {
+        print $cfg "UpdateName:\t$_->{canonical_name}\t$_->{date}\n" if !@opt_name;
+        $has_update_name = 1;
+
+        push @rpms, $_;
+
+        if($opt_install{repo} || $opt_install{rpm}) {
+          $dud_ok = 1;
+          mkdir "$base/install", 0755;
+          system "cp '$_->{file}' '$base/install/$_->{canonical_name}.rpm'";
+        }
+
+        if($opt_install{instsys}) {
+          $dud_ok = 1;
+          mkdir "$base/inst-sys", 0755;
+          open my $f, ">>", "$base/inst-sys/.update.$id";
+          print $f "$_->{canonical_name}\n";
+          close $f;
+          system "rpm2cpio $_->{file} | ( cd $base/inst-sys ; cpio --quiet --sparse -dimu --no-absolute-filenames )";
+        }
+      }
+
+      if($_->{type} eq 'bin' || $_->{type} eq 'lib') {
+        $dud_ok = 1;
+        mkdir "$base/install", 0755;
+        system "cp '$_->{file}' $base/install/";
+      }
+
+      if($_->{type} eq 'module.order') {
+        $dud_ok = 1;
+        mkdir "$base/modules", 0755;
+        system "cat '$_->{file}' >>$base/modules/module.order";
+      }
+
+      if($_->{type} eq 'module') {
+        $dud_ok =1;
+        mkdir "$base/modules", 0755;
+        system "cp '$_->{file}' $base/modules";
+        my $v = "\t$_->{mod_version}" if defined $_->{mod_version};
+        print $cfg "UpdateName:\t$_->{file}\t$_->{version}.$_->{arch}$v\n" if !@opt_name;
+        $has_update_name = 1;
+      }
+
+      if($_->{type} eq 'y2update') {
+        $dud_ok = 1;
+        system "cp -r '$_->{file}' $base";
+      }
+      elsif($_->{type} eq 'ycp' || $_->{type} eq 'ybc') {
+        if(!$_->{location}) {
+          print STDERR "$_->{file}: error: don't know where to put it\n";
+        }
+        else {
+          $dud_ok = 1;
+          my $d = "$base/y2update/$_->{location}";
+          File::Path::make_path($d);
+          if(-d $d) {
+            system "cp '$_->{file}' $d";
+          }
+          else {
+            print STDERR "$d: failed to create directory\n"
+          }
+        }
+      }
+    }
+
+    if(-d "$base/inst-sys" ) {
+      system "chmod 755 `find $base/inst-sys -type d`";
+    }
+
+    if(-e "$base/inst-sys/sbin/yast" ) {
+      if(!$opt_replace_yast) {
+        print STDERR
+          "Warning: prevented driver update from replacing /sbin/yast.\n" .
+          "If you really need to do this, use --may-replace-yast.\n";
+        unlink "$base/inst-sys/sbin/yast";
+      }
+    }
+
+    print $cfg "UpdateName:\tUpdate $id\n" if !$has_update_name;
+
+    if(@opt_exec) {
+      $dud_ok = 1;
+      mkdir "$base/install", 0755;
+
+      print $cfg "Exec:\t\t/update/*/install/mkdud.$id.sh\n";
+
+      my $c = <<'= = = = = = = =';
+#! /bin/bash
+
+# script generated by mkdud <version>
+
+# locate dud directory
+dud=${0%/install/*}
+
+[ -d "$dud" ] || exit 1
+
+export dud
+
+PATH=$dud/install:/bin:/sbin:/usr/bin:/usr/sbin
+
+cd $dud/install
+
+# run these commands
+
+<binary>
+
+# remove driver update when you're done:
+
+# rm -rf $dud/*
+= = = = = = = =
+
+      $c =~ s#<version>#$VERSION#;
+      $c =~ s#<binary>#join("\n", @opt_exec)#e;
+
+      open my $x, ">$base/install/mkdud.$id.sh";
+      print $x $c;
+      close $x;
+
+      chmod 0755, "$base/install/mkdud.$id.sh";
+    }
+
+    if(@rpms && $opt_install{repo}) {
+      $dud_ok = 1;
+      mkdir "$base/install", 0755;
+
+      my $c = <<'= = = = = = = =';
+#! /usr/bin/perl
+
+# script generated by mkdud <version>
+
+$dst = "/add_on_products.xml";
+
+$prio = _prio_;
+
+($base = $0) =~ s#(/[^/]*){2}$##;
+($id = $base) =~ s#^.*/##;
+
+mkdir "$base/repo", 0755;
+system "mv $base/install/*.rpm $base/repo";
+
+$id += 0;
+$id3 = sprintf "%03u", $id;
+
+@f = split /^/m, <<'# template';
+<?xml version="1.0"?>
+<add_on_products xmlns="http://www.suse.com/1.0/yast2ns"
+    xmlns:config="http://www.suse.com/1.0/configns">
+    <product_items config:type="list">
+    </product_items>
+</add_on_products>
+# template
+
+$product = <<"# product";
+        <product_item>
+            <name>Driver Update $id</name>
+            <url>dir:///update/$id3/repo?alias=DriverUpdate$id</url>
+            <priority config:type="integer">$prio</priority>
+        </product_item>
+# product
+
+@f = (<F>) if open F, $dst;
+
+open F, ">", $dst;
+for (@f) {
+  print F $product if m#\s*</product_items>#;
+  print F;
+}
+close F;
+
+= = = = = = = =
+
+      $c =~ s#<version>#$VERSION#;
+      $c =~ s/_prio_/$opt_prio/;
+      $c =~ s/"mv /"ln / if $opt_install{rpm};
+
+      push @{$scripts->{'update.pre'}}, $c;
+
+    my $c = <<'= = = = = = = =';
+#! /bin/bash
+
+# script generated by mkdud <version>
+
+dir=${0%/*/*}
+dir=${dir#/*/}
+
+repo="baseurl=dir:///$dir/repo"
+
+for i in `grep -l $repo /etc/zypp/repos.d/*` ; do
+  [ -f "$i" ] && rm "$i"
+done
+= = = = = = = =
+
+      $c =~ s#<version>#$VERSION#;
+
+      push @{$scripts->{'update.post2'}}, $c;
+    }
+
+    for (@files) {
+      if($_->{type} =~ /^update\.(pre|post|post2)/) {
+        my $s = `cat $_->{file}`;
+        push @{$scripts->{$_->{type}}}, $s;
+      }
+    }
+
+    if($scripts) {
+      $dud_ok = 1;
+      mkdir "$base/install", 0755;
+
+      for (sort keys %$scripts) {
+        my $s = $scripts->{$_};
+
+        open my $x, ">$base/install/$_";
+
+        if(@$s > 1) {
+          print $x "# /bin/bash\n\n# generated by mkdud $VERSION\n\ndir=\$\{0\%/\*\}\n\n";
+
+          for(my $i = 0; $i < @$s; $i++) {
+            print $x sprintf("\$dir/%02u_%s\n", $i + 1, $_);
+            open my $f, ">", sprintf("%s/install/%02u_%s", $base, $i + 1, $_);
+            print $f $s->[$i];
+            chmod 0755, $f;
+            close $f;
+          }
+        }
+        else {
+          print $x $s->[0];
+        }
+
+        chmod 0755, $x;
+        close $x;
+      }
+    }
+
+    for (@opt_config) {
+      if(/^(\S+?)\s*[:=](.*)$/) {
+        my $key = $1;
+        my $val = $2;
+        $val =~ s/^\s*|\s*$//g;
+        print $cfg "$key:\t$val\n";
+      }
+    }
+
+    close $cfg;
+  }
+
+  if($use_all_archs) {
+    my @a = @all_archs;
+    unshift @a;
+
+    for my $arch (@a) {
+      for ($dist, @dists) {
+        symlink "$all_archs[0]-$_", "$tmp_dud/linux/suse/$arch-$_";
+      }
+    }
+  }
+
+  return $dud_ok;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# analyze_ycp_files($files)
+#
+# Go through file list and assign locations to all ycp and ycb files.
+#
+sub analyze_ycp_files
+{
+  my $files = shift;
+  local $_;
+
+  my %ycp;
+
+  for (@$files) {
+    if($_->{type} eq 'ycp') {
+      open my $f, $_->{file};
+      while(my $x = <$f>) {
+        last if $. > 10;	# look at first 10 line
+        if($x =~ /\bFile:\s*(\S+)\/[^\/]+\.ycp\b/) {
+          $_->{location} = $1;
+          $ycp{$_->{file}} = $1;
+        }
+        elsif($x =~ /\bFile:\s*$/) {
+          $x = <$f>;
+          if($x =~ /^\s*\*\s*(\S+)\/[^\/]+\.ycp\b/) {
+            $_->{location} = $1;
+            $ycp{$_->{file}} = $1;
+          }
+        }
+      }
+      close $f;
+    }
+  }
+
+  for (@$files) {
+    if($_->{type} eq 'ybc') {
+      my $ycp = $_->{file};
+      $ycp =~ s/\.ybc$/\.ycp/;
+      if(defined $ycp{$ycp}) {
+        $_->{location} = $ycp{$ycp};
+      }
+      else {
+        print STDERR "$_->{file}: warning: don't know where to put it, assuming 'modules'\n";
+        $_->{location} = "modules";
+      }
+    }
+  }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $dud_dir = write_dud($files, $file_name)
+#
+# Write driver update to $file_name.
+#
+sub write_dud
+{
+  my $files = shift;
+  my $file_name = shift;
+  local $_;
+
+  my @duds;
+
+  for (@$files) {
+    push @duds, $_ if $_->{type} eq 'dud';
+  }
+
+  if(!@duds) {
+    print STDERR "Empty driver update not created.\n";
+
+    return undef;
+  }
+
+  my $tmp_src = @duds == 1 ? $duds[0]{file} : $tmp_new;
+
+  if(@duds > 1) {
+    my $dud_cnt = 0;
+    for my $d (@duds) {
+      my $n = sprintf "%s/%02d", $tmp_new, ++$dud_cnt;
+      die "$n: $!\n" unless mkdir $n;
+      die "$d->{file}/linux -> $n/linux: $!" unless rename "$d->{file}/linux", "$n/linux";
+
+      if($d->{global_files}) {
+        for (glob("$d->{global_files}/*")) {
+          system "cp '$_' $tmp_new" if -f $_;
+        }
+      }
+
+      for (glob("$d->{file}/*")) {
+        system "cp '$_' $n" if -f $_;
+      }
+    }
+  }
+
+  system "cd $tmp_src; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
+  system "cp $tmp_cpio $file_name";
+
+  return $tmp_src;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# fix_duds($files)
+#
+# Makke sure every driver update has a mininal dud.config.
+#
+sub fix_duds
+{
+  my $files = shift;
+  local $_;
+
+  for my $d (@$files) {
+    next if $d->{type} ne 'dud';
+
+    my $id;
+    chomp($id = `uuidgen 2>/dev/null`);
+    $id = sprintf("%06x%06x%04x", rand(1<<24), rand(1<<24), rand(1<<16)) unless $id;
+
+    for (glob("$d->{file}/linux/suse/*")) {
+      next if -l $_;
+      next if -s "$_/dud.config";
+      open my $f, ">$_/dud.config";
+      print $f "UpdateID:\t$id\n";
+      print $f "UpdateName:\tUpdate $id\n";
+      close $f;
+    }
+  }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub format_array
+{
+  my $ar = shift;
+  my $ind = shift;
+
+  local $_;
+
+  my $x;
+
+  for (@$ar) {
+    if(!defined $x) {
+      $x = (" " x $ind) . $_;
+    }
+    else {
+      my $xx = $x;
+      $xx =~ s/^.*\n//;
+      my $l1 = length($xx) + 3;
+      my $l2 = length($_);
+      if($l1 + $l2 > 79) {
+        $x .= ",\n" . (" " x $ind);
+      }
+      else {
+        $x .= ", ";
+      }
+      $x .= $_;
+    }
+  }
+
+  return $x;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub show_dud
+{
+  my $dud = shift;
+  local $_;
+
+  my $log;
+  my $section;
+
+  $dud_cnt++;
+
+  print "===  Update #$dud_cnt  ===\n";
+
+  if($dud->{global_files}) {
+    for (glob("$dud->{global_files}/*")) {
+      if(-f $_) {
+        s#^.*/##;
+        push @{$log->{docs}}, $_;
+      }
+    }
+  }
+
+  for (glob("$dud->{file}/*")) {
+    if(-f $_) {
+      s#^.*/##;
+      push @{$log->{docs}}, $_;
+    }
+  }
+
+  if($log->{docs}) {
+    print "  [Documentation]\n";
+    print format_array($log->{docs}, 4), "\n";
+  }
+
+  for my $part (glob("$dud->{file}/linux/suse/*")) {
+    my $p = $part;
+    $p =~ s#^.*/##;
+    next if $p eq "";
+    if(-l $part && -d $part) {
+      my $l = abs_path $part;
+      $l =~ s#^.*/##;
+      next if $l eq "";
+      push @{$section->{$l}{links}}, $p;
+    }
+    elsif(-d $part) {
+      $section->{$p}{log} = show_single_dir $part;
+    }
+  }
+
+  # join sections with identical output
+
+  my %i;
+  for (sort keys %$section) {
+    if(defined $i{$section->{$_}{log}}) {
+      my $x = $i{$section->{$_}{log}};
+      push @{$section->{$x}{links}}, $_;
+      push @{$section->{$x}{links}}, @{$section->{$_}{links}} if defined $section->{$_}{links};
+    }
+    else {
+      $i{$section->{$_}{log}} = $_;
+    }
+  }
+
+  for (values %i) {
+    my $s = $section->{$_};
+    push @{$s->{links}}, $_;
+
+    print "  [";
+    print nice_arch_list($s->{links});
+    print "]\n";
+
+    print $s->{log};
+  }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub nice_arch_list
+{
+  my $l = shift;
+  local $_;
+
+  # split by known products
+
+  my %p1;
+  for (@$l) {
+    if(/^(\S+)-(sle([sd])(\d+)|\d+\.\d+)$/) {
+      if($3 eq 's') {
+        push @{$p1{"SLES $4"}}, $1;
+      }
+      elsif($3 eq 'd') {
+        push @{$p1{"SLED $4"}}, $1;
+      }
+      else {
+        push @{$p1{"openSUSE $2"}}, $1;
+      }
+    }
+    else {
+      push @{$p1{$_}}, "";
+    }
+  }
+
+  # print arch list
+
+  my %p2;
+  for (keys %p1) {
+    $p2{$_} = join ", ", sort @{$p1{$_}};
+  }
+
+  # join sles + sled to sle
+
+  for (sort keys %p2) {
+    my $s = $_;
+    if($s =~ s/^SLED /SLES / && $p2{$s} eq $p2{$_}) {
+      my $e = $_;
+      $e =~ s/^SLED /SLE /;
+      $p2{$e} = $p2{$_};
+      delete $p2{$_};
+      delete $p2{$s};
+    }
+  }
+
+  # print final string
+
+  my @l;
+  for (sort keys %p2) {
+    push @l, $_ . ($p2{$_} ? " ($p2{$_})" : "");
+  }
+
+  return join ", ", @l;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub show_single_dir
+{
+  my $dir = shift;
+
+  my (@i, %i);
+  my $id;
+
+  # ----------------------------
+  # read config file
+
+  my %sect;
+  open my $f, "$dir/dud.config";
+  while(<$f>) {
+    next if /^\s*#/;
+    if(/^\s*(\S+)\s*[:=]\s*(.*?)\s*$/) {
+      my $key = $1;
+      my $val = $2;
+      # print "$key -- >$val<\n";
+      if("\L$key" eq 'updateid') {
+        $id = $val;
+        $sect{id} = "      $val\n";
+      }
+      elsif("\L$key" eq 'updatename') {
+        $sect{name} .= "      $val\n";
+      }
+      elsif("\L$key" eq 'exec') {
+        my $ok = 0;
+        if($val =~ m#/update/\*/install/(mkdud\..*\.sh)$#) {
+          open my $f, "$dir/install/$1";
+          chomp(my @f = (<$f>));
+          close $f;
+          for my $x (@f) {
+            if($x =~ /^# run these commands/ ... $x =~ /^\s*#/) {
+              $ok = 1;
+              $sect{exec} .= "      $x\n" if $x !~ /^\s*#|^\s*$/;
+            }
+          }
+        }
+        if(!$ok) {
+          $sect{exec} .= "      $val\n";
+        }
+      }
+      else {
+        $sect{config} .= "      $key = $val\n";
+      }
+    }
+  }
+  close $f;
+
+  # ----------------------------
+  # update.* scripts
+
+  for (glob("$dir/install/*update.*")) {
+    s#^.*/##;
+    s/^\d+/0/;
+    $i{$_}++;
+  }
+
+  for (qw ( update.pre update.post update.post2 )) {
+    next unless defined $i{$_};
+    if($i{"0_$_"} > 1) {
+      push @i, "$i{\"0_$_\"} x $_";
+    }
+    else {
+      push @i, $_;
+    }
+  }
+
+  $sect{scripts} = join ", ", @i;
+
+  # ----------------------------
+  # modules
+
+  for (glob("$dir/modules/*.ko")) {
+    my $f = $_;
+    s#^.*/##;
+    my $n = $_;
+    my $ar = get_file_arch $f;
+
+    if(defined $ar) {
+      @i = split " ", `modinfo -F vermagic $f 2>/dev/null`;
+      my $v = $i[0];
+      my $mv = `modinfo -F version $f 2>/dev/null`;
+      chomp $mv;
+      $mv = ", $mv" if $mv ne "";
+      $sect{modules} .= "      $n ($v.$ar$mv)\n";
+    }
+    else {
+      $sect{modules} .= "      $n\n";
+    }
+  }
+
+  $sect{modules} .= "      module.order\n" if -f "$dir/modules/module.order";
+
+  # ----------------------------
+  # packages
+
+  for (glob("$dir/install/*.rpm")) {
+    my $f = $_;
+    s#^.*/##;
+    my $n = $_;
+
+    $_ = `file -L $f 2>/dev/null`;
+    s/^[^:]*:\s*//;
+    if(/^RPM/) {
+      my $r = `rpm --nosignature -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $f 2>$tmp_err`;
+      if($r ne "") {
+        my $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
+        $ar = "i386" if $ar =~ /^i.86$/;
+
+        my $d = `rpm --nosignature -qp --qf '%{BUILDTIME}' $f 2>$tmp_err`;
+        $d = gmtime $d if $d;
+
+        $d = "$r, $d" if $f !~ /(^|\/)$r\.rpm$/;
+        $sect{rpms} .= "      $n  ($d)\n";
+      }
+      else {
+        $sect{rpms} .= "      $n\n";
+      }
+    }
+    else {
+      $sect{rpms} .= "      $n\n";
+    }
+  }
+
+  if($sect{rpms}) {
+    my $prio;
+    my $type;
+
+    for my $fn (glob("$dir/install/*update.pre")) {
+      open my $f, $fn;
+      my @f = (<$f>);
+      close $f;
+      next unless grep { /^# script generated by mkdud / } @f;
+      my @p;
+      if(@p = grep { /^\$prio = / } @f and $p[0] =~ / = (\d+)/) {
+        $prio = $1;
+        my @t;
+        if(@t = grep { /^system "(ln|mv) / } @f and $t[0] =~ /(ln|mv)/) {
+          $type = $1;
+        }
+        last;
+      }
+    }
+
+    my %i;
+
+    if(defined $prio) {
+      $i{repo} = 1;
+      $i{rpm} = 1 if $type eq "ln";
+    }
+    else {
+      $i{rpm} = 1;
+    }
+
+    $i{instsys} = 1 if -f "$dir/inst-sys/.update.$id";
+
+    my $l = "- install methods: " . join(", ", sort keys %i);
+    $l .= " (repo priority $prio)" if defined $prio;
+
+    $sect{rpms} .= "      $l\n";
+  }
+
+
+  # ----------------------------
+  # y2update
+
+  if(-d "$dir/y2update") {
+    my $max_files = 10;
+  
+    chomp(my @f = `cd $dir/y2update; find . -type f`);
+    @f = map { s#^\./##; $_ } sort @f;
+    if(@f > $max_files + 1) {
+      $sect{y2update} .= "      $_\n" for (@f[0 .. $max_files - 1]);
+      my $x = @f - $max_files;
+      $sect{y2update} .= "      ... ($x more files)\n";
+    }
+    else {
+      $sect{y2update} .= "      $_\n" for (@f);
+    }
+  }
+
+  # ----------------------------
+  # instsys
+
+  if(-d "$dir/inst-sys") {
+    my $max_files = 10;
+  
+    chomp(my @f = `cd $dir/inst-sys; find . -type f`);
+    @f = map { s#^\.##; $_ } sort @f;
+    @f = grep { $_ ne "/.update.$id" } @f;
+
+    if(-e "$dir/inst-sys/sbin/yast") {
+      $sect{instsys} .= "      ***  Warning: replaces /sbin/yast.  ***\n";
+    }
+
+    if(@f > $max_files + 1) {
+      $sect{instsys} .= "      $_\n" for (@f[0 .. $max_files - 1]);
+      my $x = @f - $max_files;
+      $sect{instsys} .= "      ... ($x more files)\n";
+    }
+    else {
+      $sect{instsys} .= "      $_\n" for (@f);
+    }
+  }
+
+  # ----------------------------
+  # other files
+
+  for (glob("$dir/install/*")) {
+    s#^.*/##;
+    next if /\.rpm$/;
+    next if /update\.(pre|post|post2)$/;
+    next if /^mkdud\./;
+    $sect{other} .= "      $_\n";
+  }
+
+  # ----------------------------
+  # generate summary
+
+  my $log;
+
+  if($sect{name}) {
+    $log .= "    Name:\n$sect{name}";
+  }
+
+  if($sect{id}) {
+    $log .= "    ID:\n$sect{id}";
+  }
+
+  if($sect{rpms}) {
+    $log .= "    Packages:\n$sect{rpms}";
+  }
+
+  if($sect{modules}) {
+    $log .= "    Modules:\n$sect{modules}";
+  }
+
+  if($sect{scripts}) {
+    $log .= "    Scripts:\n      $sect{scripts}\n";
+  }
+
+  if($sect{y2update}) {
+    $log .= "    YaST Update:\n$sect{y2update}";
+  }
+
+  if($sect{instsys}) {
+    $log .= "    Installation System:\n$sect{instsys}";
+  }
+
+  if($sect{other}) {
+    $log .= "    Other Files:\n$sect{other}";
+  }
+
+  if($sect{exec}) {
+    $log .= "    Run Commands:\n$sect{exec}";
+  }
+
+  if($sect{config}) {
+    $log .= "    Config Entries:\n$sect{config}";
+  }
+
+  return $log;
+}
+
+
