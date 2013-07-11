@@ -18,9 +18,9 @@ helps you to setup such a driver update.
 
 There are two ways for this:
 
-(a) The old ('legacy') way: place all rpms into the 'install' directory and
-    YaST will run an 'rpm -U install/*.rpm' at the end of the first stage of
-    the installation.
+(a) The old ('rpm') way: place all rpms into the 'install' directory and
+    YaST will run 'rpm -U install/*.rpm' at the end of the first installation
+    stage.
 
 (b) Since SLE11/openSUSE 12.1 YaST lets you register a repository
     automatically. The repo priority can be set higher (numerically lower)
@@ -38,7 +38,7 @@ Examples:
 
 (1)
 - update perl-Bootloader with method (a) _and_ (b), repo priority is 50:
-# mkdud -d sle11 foo1.dud perl-Bootloader.rpm
+# mkdud --dist sle11 --create foo1.dud perl-Bootloader.rpm
 
 
 (2)
@@ -51,7 +51,7 @@ yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.i586.rpm
 perl-Bootloader/binaries/perl-Bootloader-0.4.89.30-1.10.x86_64.rpm
 yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
 
-# mkdud -i repo -p 90 -d sle11 foo2.dud perl-Bootloader/binaries/* yast2-bootloader/binaries/*
+# mkdud --install repo --prio 90 --dist sle11 --create foo2.dud perl-Bootloader/binaries/* yast2-bootloader/binaries/*
 
 
 (3)
@@ -61,7 +61,7 @@ yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
 yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.i586.rpm
 yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
 
-# mkdud -i none -d sle11 foo3.dud yast2-bootloader/binaries/*
+# mkdud --install instsys --dist sle11 --create foo3.dud yast2-bootloader/binaries/*
 
 
 2. Adding and running programms
@@ -69,7 +69,7 @@ yast2-bootloader/binaries/yast2-bootloader-2.17.78-1.1.x86_64.rpm
 
 Sometimes you need to include and run a script to fix things. For example
 
-# mkdud -d sle11 -x bar foo4.dud bar
+# mkdud --dist sle11 --exec bar --create foo4.dud bar
 
 adds 'bar' to the 'install' directory and runs it. Unlike the 'update.pre'
 script it is run just after the dud has been read, even _before_ any dud
@@ -77,7 +77,7 @@ modules are loaded.
 
 You can combine this with rpms:
 
-# mkdud -i none -d sle11 -x fix_it foo5.dud yast2-bootloader/binaries/* fix_it
+# mkdud --install instsys --dist sle11 --exec fix_it --create foo5.dud yast2-bootloader/binaries/* fix_it
 
 This replaces yast2-bootloader and also adds and runs the 'fix_it' script.
 

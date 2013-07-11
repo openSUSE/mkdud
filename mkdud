@@ -117,7 +117,6 @@ my @opt_arch;
 my $opt_prio = 50;
 my @opt_name;
 my @opt_exec;
-my @opt_doc;
 my $opt_replace_yast;
 my $opt_save_temp;
 my %opt_install;
@@ -141,9 +140,9 @@ GetOptions(
   'name|n=s'         => \@opt_name,
   'exec|x=s'         => \@opt_exec,
   'config=s'         => \@opt_config,
-  'doc=s'            => \@opt_doc,
   'may-replace-yast' => \$opt_replace_yast,
   'save-temp'        => \$opt_save_temp,
+  'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
 ) || usage 1;
 
@@ -235,37 +234,128 @@ for (@files) {
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 sub usage
 {
-  print <<"  usage";
-Usage: mkdud [options] dud source1 source2 ...
-Create driver update that updates rpms in the installation environment and the
-final installed system.
+  print <<"= = = = = = = =";
+Usage: mkdud [OPTIONS] [SOURCES]
+Manage driver updates.
 
-source may be an rpm or normal file. rpms are added and updated, normal files are
-added to the driver update's 'install' directory.
+General options:
 
-Options:
-  -a, --arch ARCH         Use ARCH (default: taken from rpms).
-  -d, --dist DIST         Either openSUSE version (e.g. 12.1) or SLE version (e.g. sle11).
-  -p, --prio PRIO         Set repo priority to PRIO (default: 50).
-  -n, --name NAME         Set driver update name.
-  -x, --exec FILE         Execute FILE in driver update.
-  -i, --install METHOD    Package install method. METHOD is one of: none,legacy,repo,both
-                          (default: both).
-      --may-replace-yast  Allow to update /sbin/yast in the installation system
-                          (usually a really bad idea).
+      --version                 Show mkdud version.
+      --save-temp               Keep temporary files.
+      --help                    Write this help text.
+
+Verify driver update:
+
+  -s, --show DUD                Verify DUD and print short summary. DUD may be a file
+                                or directory or an ISO image.
+
+Create driver update:
+
+  -c, --create DUD              Create new driver update from SOURCES.
+  -a, --arch ARCH               Build for target ARCH (default: auto detected from SOURCES).
+                                Option can be repeated to specify several achitectures.
+                                Note: if you don't set the architecture and mkdud can't
+                                find a hint in SOURCES either, an update for all supported
+                                architectures is created.
+  -d, --dist DIST               Either an openSUSE version (e.g. 12.3) or SLE version
+                                (e.g. sles11).
+                                Note that 'sle11' is a short hand for specifying both
+                                'sles11' and 'sled11'.
+                                Option can be repeated to specify several distribution targets.
+  -p, --prio NUM                Set repository priority to NUM (default: 50).
+  -n, --name NAME               Set driver update name. If you update packages or modules
+                                a default name is generated based on the package and module
+                                versions.
+                                Option can be repeated to specify a multi-line name.
+  -x, --exec COMMAND            Run command just after the driver update has been loaded.
+                                Option can be repeated to specify several commands.
+                                Note: the commands are run just before kernel modules
+                                are updated.
+  -i, --install METHODS         Package install method. METHODS is a comma-separated list
+                                of: instsys, repo, rpm (default: 'instsys,repo,rpm').
+                                - instsys: unpack packages in installation system
+                                - repo: create repo with all packages and register with
+                                    yast before starting installation; repo will be removed
+                                    after the installation
+                                - rpm: install packages at the end of the installation
+                                    using rpm (that is, not via repo & zypper)
+      --config KEY=VALUE        Set linuxrc config option KEY to VALUE. The options are changed
+                                just after the driver update has been loaded.
+                                Option can be repeated to set several options.
+      --doc FILE                Set linuxrc config option KEY to VALUE. The options are changed
+                                just after the driver update has been loaded.
+                                Option can be repeated to set several options.
+      --may-replace-yast        Allow to update /sbin/yast in the installation system
+                                (usually a really bad idea).
+
+To create a driver update you need SOURCES. SOURCES can contain:
+
+  - existing driver updates; either as archive or unpacked directory. All driver
+    updates are joined.
+
+  - RPMs. The packages are used according to the value of the --install option.
+
+  - kernel modules.
+
+  - 'module.order' files. See driver update documentation.
+
+  - 'update.pre', 'update.post', 'update.post2' scripts.
+    See driver update documentation.
+    Note that you can specify several 'update.post', etc. scripts. They are all run.
+
+  - YCP, YBC files. Files are copied to the correct places automatically if they
+    contain a usable 'File' comment.
+
+  - 'y2update' directories.
+
+  - program files (binaries, libraries, executable scripts). They are put into the
+    'install' dir. You can run them if needed using the --exec option.
+
+  - plain text files. They are considered documentation.
+
+  - directories that are neither DUDs nor YaST updates. Everything below the directory
+    is added to the installation system.
+
+  - ISO images. The images are unpacked and scanned for driver updates.
+
+References:
+
+Driver update documentation is available here:
+
+  http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/index.html
+
+  http://en.opensuse.org/SDB:Linuxrc#p_driverupdate
 
 Examples:
-  # update foo & bar rpms
-  mkdud -d sle11 foo.dud foo.rpm bar.rpm
 
-  # update foo & bar rpms; add and run setup.sh script
-  mkdud -d sle11 -x setup.sh foo.dud foo.rpm bar.rpm setup.sh
+  # show content of foo.dud
+  mkdud --show foo.dud
 
-Note:
-  If the architecture can't be determined from the rpm (e.g. noarch) you
-  have to explicitly use the '-a' option.
+  # create update for hello.rpm
+  mkdud --create foo.dud --dist 12.3 hello.rpm 
 
-  usage
+  # create kernel update
+  mkdud --create foo.dud --dist 12.3 kernel-*.rpm 
+
+  # create kernel update and replace tg3 module
+  mkdud --create foo.dud --dist 12.3 kernel-*.rpm tg3.ko
+
+  # create kernel update, replace tg3 module, add some docs and give the update a cool name
+  mkdud --create foo.dud --dist 12.3 --name '73$7 update' kernel-*.rpm tg3.ko README
+
+  # update some YaST stuff
+  mkdud --create foo.dud --dist 12.3 BootCommon.y*
+
+  # add directory tree below 'newstuff/' to installation system
+  mkdud --create foo.dud --dist 12.3 newstuff
+
+  # extract driver updates from ISO (you need root permissions for that)
+  mkdud --create foo.dud xxx.iso
+
+  # create update for hello.rpm and join with foo1.dud and foo2.dud
+  mkdud --create foo.dud --dist sle11 foo1.dud foo2.dud hello.rpm
+
+= = = = = = = =
 
   exit shift;
 }
