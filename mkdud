@@ -212,7 +212,11 @@ if($opt_create) {
 
   exit 0 unless defined $dud;
 
+  # clear list...
+
   undef @files;
+
+  # ... and fall through to '--show'
 }
 
 file_type $dud;
@@ -232,6 +236,10 @@ for (@files) {
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# usage($exit_code)
+#
+# Print help text and exit.
+#
 sub usage
 {
   print <<"= = = = = = = =";
@@ -280,9 +288,6 @@ Create driver update:
                                 - rpm: install packages at the end of the installation
                                     using rpm (that is, not via repo & zypper)
       --config KEY=VALUE        Set linuxrc config option KEY to VALUE. The options are changed
-                                just after the driver update has been loaded.
-                                Option can be repeated to set several options.
-      --doc FILE                Set linuxrc config option KEY to VALUE. The options are changed
                                 just after the driver update has been loaded.
                                 Option can be repeated to set several options.
       --may-replace-yast        Allow to update /sbin/yast in the installation system
@@ -362,6 +367,10 @@ Examples:
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $arch = get_file_arch($file)
+#
+# Return architecture for $file or undef if it couldn't be determined.
+#
 sub get_file_arch
 {
   local $_;
@@ -381,6 +390,10 @@ sub get_file_arch
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# file_type($src)
+#
+# Analyze $src and add type and other info to global @files list.
+#
 sub file_type
 {
   local $_;
@@ -563,6 +576,11 @@ sub file_type
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# copy_dud($src, $dst)
+#
+# Copy driver update. Copy only files we think belong
+# to the update.
+#
 sub copy_dud
 {
   local $_;
@@ -642,6 +660,10 @@ sub analyze_dud
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # $ok = new_dud($dir)
+#
+# Create new driver update in $tmp_dud.
+#
+# Return 1 if we succeeded.
 #
 sub new_dud
 {
@@ -960,7 +982,7 @@ done
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# analyze_ycp_files($files)
+# analyze_ycp_files(\@files)
 #
 # Go through file list and assign locations to all ycp and ycb files.
 #
@@ -1009,7 +1031,7 @@ sub analyze_ycp_files
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# $dud_dir = write_dud($files, $file_name)
+# $dud_dir = write_dud(\@files, $file_name)
 #
 # Write driver update to $file_name.
 #
@@ -1062,7 +1084,7 @@ sub write_dud
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # fix_duds($files)
 #
-# Makke sure every driver update has a mininal dud.config.
+# Make sure every driver update has a mininal dud.config.
 #
 sub fix_duds
 {
@@ -1089,6 +1111,10 @@ sub fix_duds
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $string = format_array(\@list, $indentation)
+#
+# Return joined list values with line breaks added if it gets too long.
+#
 sub format_array
 {
   my $ar = shift;
@@ -1122,6 +1148,12 @@ sub format_array
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# show_dud($dud)
+#
+# Print driver update summary.
+#
+# $dud is a reference to a file type element.
+#
 sub show_dud
 {
   my $dud = shift;
@@ -1198,6 +1230,11 @@ sub show_dud
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $string = nice_arch_list(\@list)
+#
+# Put a list of <arch>-<dist> values into something more compact and better
+# readable.
+#
 sub nice_arch_list
 {
   my $l = shift;
@@ -1255,6 +1292,11 @@ sub nice_arch_list
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $string = show_single_dir($dir)
+#
+# Return summary of single driver update (what's
+# in /linux/suse/<arch>-<dist>/).
+#
 sub show_single_dir
 {
   my $dir = shift;
