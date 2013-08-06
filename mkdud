@@ -177,6 +177,8 @@ if($opt_create) {
     $need_dist = 1, last if $_->{type} ne "dud";
   }
 
+  $need_dist ||= @opt_config || @opt_exec || @opt_name;
+
   if($need_dist) {
     die "Error: distribution arg is required; use --dist.\n" if !@opt_dist;
     my %d;
@@ -699,6 +701,9 @@ sub new_dud
 
     my $has_update_name = @opt_name;
 
+    # special case: allow otherwise empty update if a name was given explicitly
+    $dud_ok = 1 if $has_update_name;
+
     print $cfg "UpdateName:\t$_\n" for (@opt_name);
 
     # ---------------------------------------------------------
@@ -955,6 +960,7 @@ done
     }
 
     for (@opt_config) {
+      $dud_ok = 1;
       if(/^(\S+?)\s*[:=](.*)$/) {
         my $key = $1;
         my $val = $2;
