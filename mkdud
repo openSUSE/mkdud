@@ -92,7 +92,7 @@ $Data::Dumper::Sortkeys = 1;
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 1;
 
-our $VERSION = "1.1";
+our $VERSION = "1.3";
 
 my @all_archs = ( "x86_64", "i386", "ppc64", "ppc", "s390x", "s390", "ia64" );
 
