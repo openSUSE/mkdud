@@ -182,7 +182,7 @@ if($opt_create) {
   if($need_dist) {
     die "Error: distribution arg is required; use --dist.\n" if !@opt_dist;
     my %d;
-    @d{map { /^sle?(\d+)$/i ? ("sles$1", "sled$1") : "\L$_" } @opt_dist} = ();
+    @d{map { /^sle([sd]?)(\d+)/i ? $1 eq "" ? ("sles$2", "sled$2") : "sle\L$1$2" : "\L$_" } @opt_dist} = ();
     @dists = sort keys %d;
   }
 
