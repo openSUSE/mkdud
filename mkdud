@@ -118,6 +118,7 @@ my $opt_prio = 50;
 my @opt_name;
 my @opt_exec;
 my $opt_replace_yast;
+my $opt_no_docs;
 my $opt_save_temp;
 my %opt_install;
 my @opt_config;
@@ -141,6 +142,7 @@ GetOptions(
   'exec|x=s'         => \@opt_exec,
   'config=s'         => \@opt_config,
   'may-replace-yast' => \$opt_replace_yast,
+  'no-docs'          => \$opt_no_docs,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -292,6 +294,8 @@ Create driver update:
       --config KEY=VALUE        Set linuxrc config option KEY to VALUE. The options are changed
                                 just after the driver update has been loaded.
                                 Option can be repeated to set several options.
+      --no-docs                 Don't include package documentation in unpacked instsys tree
+                                (to save space).
       --may-replace-yast        Allow to update /sbin/yast in the installation system
                                 (usually a really bad idea).
 
@@ -407,8 +411,7 @@ sub file_type
     return;
   }
 
-  $_ = `file -L $_[0] 2>/dev/null`;
-  s/^[^:]*:\s*//;
+  $_ = `file -b -L $_[0] 2>/dev/null`;
 
   if(/^RPM/) {
     my $ft = { type => 'rpm', file => $_[0] };
@@ -471,8 +474,7 @@ sub file_type
     $dud = "cpio";
   }
   elsif(/^gzip compressed data/) {
-    my $z = `gunzip -c $_[0] | file -`;
-    $z =~ s/^.*:\s*//;
+    my $z = `gunzip -c $_[0] | file -b -`;
     $dud = "cpio.gz" if $z =~ / cpio archive /;
   }
   elsif(/ ISO 9660 CD-ROM /) {
@@ -510,8 +512,7 @@ sub file_type
 
       File::Find::find(sub {
         if(-f $_) {
-          my $f = `file -L $_ 2>/dev/null`;
-          $f =~ s/^[^:]*:\s*//;
+          my $f = `file -b -L $_ 2>/dev/null`;
 
           if($f =~ /^ELF/) {
             my $ar = get_file_arch $_;
@@ -793,6 +794,12 @@ sub new_dud
 
     if(-d "$base/inst-sys" ) {
       system "chmod 755 `find $base/inst-sys -type d`";
+
+      if($opt_no_docs) {
+        system "rm -rf $base/inst-sys/usr/share/{doc,info,man}";
+        rmdir "$base/inst-sys/usr/share";
+        rmdir "$base/inst-sys/usr";
+      }
     }
 
     if(-e "$base/inst-sys/sbin/yast" ) {
@@ -1405,8 +1412,7 @@ sub show_single_dir
     s#^.*/##;
     my $n = $_;
 
-    $_ = `file -L $f 2>/dev/null`;
-    s/^[^:]*:\s*//;
+    $_ = `file -b -L $f 2>/dev/null`;
     if(/^RPM/) {
       my $r = `rpm --nosignature -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $f 2>$tmp_err`;
       if($r ne "") {
