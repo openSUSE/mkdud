@@ -117,8 +117,8 @@ my @opt_arch;
 my $opt_prio = 50;
 my @opt_name;
 my @opt_exec;
-my $opt_replace_yast;
 my $opt_no_docs;
+my $opt_force;
 my $opt_save_temp;
 my %opt_install;
 my @opt_config;
@@ -141,8 +141,9 @@ GetOptions(
   'name|n=s'         => \@opt_name,
   'exec|x=s'         => \@opt_exec,
   'config=s'         => \@opt_config,
-  'may-replace-yast' => \$opt_replace_yast,
+  'may-replace-yast' => \$opt_force,
   'no-docs'          => \$opt_no_docs,
+  'force'            => \$opt_force,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -273,6 +274,8 @@ Create driver update:
                                 (e.g. sles11).
                                 Note that 'sle11' is a short hand for specifying both
                                 'sles11' and 'sled11'.
+                                Note also that there are no separate names for service packs.
+                                So 'sles11-sp1' is the same as 'sles11'.
                                 Option can be repeated to specify several distribution targets.
   -p, --prio NUM                Set repository priority to NUM (default: 50).
   -n, --name NAME               Set driver update name. If you update packages or modules
@@ -296,8 +299,9 @@ Create driver update:
                                 Option can be repeated to set several options.
       --no-docs                 Don't include package documentation in unpacked instsys tree
                                 (to save space).
-      --may-replace-yast        Allow to update /sbin/yast in the installation system
-                                (usually a really bad idea).
+      --force                   Allow driver update to contain files that might break the
+                                installation. mkdud will normally remove those files and
+                                print a warning. Use this option to override.
 
 To create a driver update you need SOURCES. SOURCES can contain:
 
@@ -802,12 +806,19 @@ sub new_dud
       }
     }
 
-    if(-e "$base/inst-sys/sbin/yast" ) {
-      if(!$opt_replace_yast) {
+    if(!$opt_force) {
+      if(-e "$base/inst-sys/sbin/yast") {
         print STDERR
           "Warning: prevented driver update from replacing /sbin/yast.\n" .
-          "If you really need to do this, use --may-replace-yast.\n";
+          "If you really need to do this, use --force.\n";
         unlink "$base/inst-sys/sbin/yast";
+      }
+
+      if(-e "$base/inst-sys/usr/src/packages") {
+        print STDERR
+          "Warning: prevented driver update from including /usr/src/packages.\n" .
+          "If you really need to do this, use --force.\n";
+        system "rm -rf $base/inst-sys/usr/src/packages";
       }
     }
 
@@ -1503,6 +1514,10 @@ sub show_single_dir
 
     if(-e "$dir/inst-sys/sbin/yast") {
       $sect{instsys} .= "      ***  Warning: replaces /sbin/yast.  ***\n";
+    }
+
+    if(-e "$dir/inst-sys/usr/src/packages") {
+      $sect{instsys} .= "      ***  Warning: includes /usr/src/packages.  ***\n";
     }
 
     if(@f > $max_files + 1) {
