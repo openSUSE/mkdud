@@ -81,3 +81,19 @@ You can combine this with rpms:
 
 This replaces yast2-bootloader and also adds and runs the 'fix_it' script.
 
+
+3. Conditional DUDs
+-------------------
+
+If a DUD must only be applied to certain machines or only to specific
+service packs, you can add a condition script that is run when the DUD
+config file is parsed during installation. This script must exit with 0 to
+indicate that it's ok to continue with the DUD. If the exit code is nonzero
+a message is printed that the update will not be applied and the update is
+deleted.
+
+mkdud can generate scripts automatically that check for sle10 and sle11
+service packs. They are used if you name the script 'ServicePackN'. If you
+want to use your own scripts with such a name, specify it e.g. as
+'./ServicePack1' on the command line.
+
