@@ -92,7 +92,7 @@ $Data::Dumper::Sortkeys = 1;
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 1;
 
-our $VERSION = "1.5";
+our $VERSION = "0.0";
 
 my @all_archs = ( "x86_64", "i386", "ppc64", "ppc", "s390x", "s390", "ia64" );
 
@@ -435,7 +435,7 @@ sub file_type
     return;
   }
 
-  $_ = `file -b -L $_[0] 2>/dev/null`;
+  $_ = `file -b -k -L $_[0] 2>/dev/null`;
 
   if(/^RPM/) {
     my $ft = { type => 'rpm', file => $_[0] };
