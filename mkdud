@@ -94,7 +94,7 @@ $Data::Dumper::Indent = 1;
 
 our $VERSION = "0.0";
 
-my @all_archs = ( "x86_64", "i386", "ppc64", "ppc", "s390x", "s390", "ia64" );
+my @all_archs = qw ( x86_64 aarch64 armv7l i386 ia64 ppc ppc64 ppc64le s390 s390x );
 
 sub usage;
 sub get_file_arch;
@@ -1381,6 +1381,7 @@ sub nice_arch_list
 {
   my $l = shift;
   local $_;
+  my $all_ar = join ", ", sort @all_archs;
 
   # split by known products
 
@@ -1426,7 +1427,9 @@ sub nice_arch_list
 
   my @l;
   for (sort keys %p2) {
-    push @l, $_ . ($p2{$_} ? " ($p2{$_})" : "");
+    my $al = $p2{$_};
+    $al = "" if $al eq $all_ar;
+    push @l, $_ . ($al ? " ($al)" : "");
   }
 
   return join ", ", @l;
