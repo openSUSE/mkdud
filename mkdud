@@ -110,6 +110,7 @@ sub show_dud;
 sub nice_arch_list;
 sub show_single_dir;
 sub get_service_pack;
+sub set_format;
 
 my $opt_create;
 my $opt_show;
@@ -124,6 +125,7 @@ my $opt_save_temp;
 my %opt_install;
 my @opt_config;
 my @opt_condition;
+my $opt_format;
 
 # global variables
 my $dud;
@@ -132,6 +134,8 @@ my @dists;
 my $dud_cnt = 0;
 my %arch;
 my $use_all_archs = 0;
+my $format_archive = "cpio";
+my $format_compr = "gz";
 
 # linuxrc versions in service packs
 my $servicepack;
@@ -158,6 +162,7 @@ GetOptions(
   'no-docs'          => \$opt_no_docs,
   'keep-docs'        => sub { $opt_no_docs = 0 },
   'force'            => \$opt_force,
+  'format=s'         => \$opt_format,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -184,7 +189,9 @@ my $tmp_old = $tmp->dir('old');
 my $tmp_new = $tmp->dir('new');
 my $tmp_mnt = $tmp->dir('mnt');
 my $tmp_err = $tmp->file('err');
-my $tmp_cpio = $tmp->file('dud.cpio.gz');
+my $tmp_archive = $tmp->file('dud.xxx');
+
+set_format;
 
 if($opt_create) {
   file_type $_ for (@ARGV);
@@ -322,6 +329,9 @@ Create driver update:
       --force                   Allow driver update to contain files that might break the
                                 installation. mkdud will normally remove those files and
                                 print a warning. Use this option to override.
+      --format FORMAT           Specify archive format for DUD. FORMAT=(cpio|tar)[.(gz|xz)].
+                                Default FORMAT is cpio.gz (gzip compressed cpio archive).
+                                Note: don't change the default. See README.
 
 To create a driver update you need SOURCES. SOURCES can contain:
 
@@ -494,12 +504,14 @@ sub file_type
 
     return;
   }
-  elsif(/ cpio archive /) {
-    $dud = "cpio";
+  elsif(/ (cpio|tar) archive/) {
+    $dud = $1;
   }
-  elsif(/^gzip compressed data/) {
-    my $z = `gunzip -c $_[0] | file -b -`;
-    $dud = "cpio.gz" if $z =~ / cpio archive /;
+  elsif(/^(gzip|XZ) compressed data/) {
+    my $cmd = "\L$1";
+    my $f = $cmd ne 'gzip' ? $cmd : 'gz';
+    my $z = `$cmd -dc $_[0] | file -b -`;
+    $dud = "$1.$f" if $z =~ / (cpio|tar) archive/;
   }
   elsif(/ ISO 9660 CD-ROM /) {
     if(!$>) {
@@ -560,7 +572,6 @@ sub file_type
 
     return;
   }
-
   elsif(-f $_[0] && -s _ && -T _) {
     open my $f, $_[0];
     my $l = <$f>;
@@ -580,11 +591,13 @@ sub file_type
 
     my $old = sprintf "%s/%04d", $tmp_old, $dud_cnt++;
     die "$old: $!\n" unless mkdir $old;
-    if($dud eq "cpio") {
-      system "cat $_[0] | ( cd $old ; cpio --quiet -dmiu 2>/dev/null)";
-    }
-    elsif($dud eq "cpio.gz") {
-      system "gunzip -c $_[0] | ( cd $old ; cpio --quiet -dmiu 2>/dev/null)";
+    if($dud =~ /^(cpio|tar)(\.(gz|xz))?$/) {
+      my $cmd = "cpio --quiet -dmiu";
+      $cmd = "tar -xpf -" if $1 eq "tar";
+      my $compr = 'cat';
+      $compr = 'gzip -dc' if $3 eq 'gz';
+      $compr = 'xz -dc' if $3 eq 'xz';
+      system "$compr $_[0] | ( cd $old ; $cmd 2>/dev/null)";
     }
     elsif($dud eq 'dir') {
       copy_dud $_[0], $old;
@@ -1196,8 +1209,15 @@ sub write_dud
     }
   }
 
-  system "cd $tmp_src; find . | cpio --quiet -o -H newc -R 0:0 | gzip -9c >$tmp_cpio";
-  system "cp $tmp_cpio $file_name";
+  my $cmd_archive = 'find . | cpio --quiet -o -H newc -R 0:0';
+  $cmd_archive = 'tar -cf - .' if $format_archive eq 'tar';
+
+  my $compr = 'cat';
+  $compr = 'gzip -9c' if $format_compr eq 'gz';
+  $compr = 'xz --check=crc32 -c' if $format_compr eq 'xz';
+
+  system "cd $tmp_src; $cmd_archive | $compr >$tmp_archive";
+  system "cp $tmp_archive $file_name";
 
   return $tmp_src;
 }
@@ -1728,5 +1748,23 @@ exit 1
   $c =~ s#<linuxrc>#$linuxrc#;
 
   return $c;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub set_format
+{
+  return if !defined $opt_format;
+
+  if($opt_format =~ /^(cpio|tar)(\.(gz|gzip|xz))?$/) {
+    $format_archive = $1;
+    $format_compr = $3;
+    $format_compr = 'gz' if $format_compr eq 'gzip';
+
+    # print "format = $format_archive.$format_compr\n";
+  }
+  else {
+    die "$opt_format: unsupported format spec\n";
+  }
 }
 

@@ -97,3 +97,26 @@ service packs. They are used if you name the script 'ServicePackN'. If you
 want to use your own scripts with such a name, specify it e.g. as
 './ServicePack1' on the command line.
 
+
+4. DUD formats
+--------------
+
+The DUD will be packaged into an archive and optionally compressed. The
+default is a gzipped cpio archive.
+
+Situation prior to SLE12, openSUSE 13.2:
+
+  Due to a limitation in linuxrc you can't use a compressed DUD when you
+  need to sign it. (The verification in linuxrc will fail.) So, if you need
+  to create a signed DUD, don't compress it (use --format=cpio).
+
+SLE12, openSUSE 13.2, and later versions:
+
+  You can use either a cpio or tar archive and can compress it optionally
+  with either gzip or xz. All formats may be used for signed DUDs.
+
+There is an advantage in using cpio instead of tar: because the Linux kernel
+understands cpio archives, you can just append a DUD to the initrd on the
+boot medium to apply it (literally: 'cat my.dud >> initrd'). No need for a
+'dud' boot option in this case.
+
