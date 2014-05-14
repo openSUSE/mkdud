@@ -847,7 +847,7 @@ sub new_dud
     }
 
     if(!$opt_force) {
-      if(-e "$base/inst-sys/sbin/yast") {
+      if(lstat "$base/inst-sys/sbin/yast") {
         print STDERR
           "Warning: prevented driver update from replacing /sbin/yast.\n" .
           "If you really need to do this, use --force.\n";
