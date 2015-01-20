@@ -28,7 +28,7 @@ There are two ways for this:
     preferred.
 
 Method (b) has the advantage that the old packages are never installed and
-used and conficts and dependencies are automatically resolved (think of
+used and conflicts and dependencies are automatically resolved (think of
 different kernel flavors).
 
 This script supports both ways.
