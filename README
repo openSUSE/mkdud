@@ -120,3 +120,14 @@ understands cpio archives, you can just append a DUD to the initrd on the
 boot medium to apply it (literally: 'cat my.dud >> initrd'). No need for a
 'dud' boot option in this case.
 
+
+5. Signature
+------------
+
+When downloading a driver update the installer will verify the integrity of
+the update by checking the (detached) signature.
+
+Note that for sle11 due to a limitation in the installer you can only sign
+an uncompressed update. sle12/openSUSE 13.2 and later don't have this
+limitation.
+

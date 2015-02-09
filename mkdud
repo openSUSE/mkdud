@@ -111,7 +111,10 @@ sub nice_arch_list;
 sub show_single_dir;
 sub get_service_pack;
 sub set_format;
+sub import_sign_key;
+sub sign_file;
 
+my %config;
 my $opt_create;
 my $opt_show;
 my @opt_dist;
@@ -126,6 +129,8 @@ my %opt_install;
 my @opt_config;
 my @opt_condition;
 my $opt_format;
+my $opt_sign;
+my $opt_sign_key;
 
 # global variables
 my $dud;
@@ -136,6 +141,7 @@ my %arch;
 my $use_all_archs = 0;
 my $format_archive = "cpio";
 my $format_compr = "gz";
+my $sign_key_dir;
 
 # linuxrc versions in service packs
 my $servicepack;
@@ -161,6 +167,8 @@ GetOptions(
   'may-replace-yast' => \$opt_force,
   'no-docs'          => \$opt_no_docs,
   'keep-docs'        => sub { $opt_no_docs = 0 },
+  'sign'             => \$opt_sign,
+  'sign-key=s'       => \$opt_sign_key,
   'force'            => \$opt_force,
   'format=s'         => \$opt_format,
   'save-temp'        => \$opt_save_temp,
@@ -182,6 +190,21 @@ usage 2 if $opt_show && @ARGV;
 
 @opt_arch = map { /^i.86$/ ? "i386" : $_ } @opt_arch;
 
+if(open my $f, "$ENV{HOME}/.mkdudrc") {
+  while(<$f>) {
+    next if /^\s*#/;
+    if(/^\s*(\S+?)\s*=\s*(.*?)\s*$/) {
+      my $key = $1;
+      my $val = $2;
+      $val =~ s/^\"|\"$//g;
+      $config{$key} = $val;
+    }
+  }
+  close $f;
+}
+
+$opt_sign_key ||= $config{'sign-key'};
+
 my $tmp = Tmp::new($opt_save_temp);
 
 my $tmp_dud = $tmp->dir('dud');
@@ -192,6 +215,8 @@ my $tmp_err = $tmp->file('err');
 my $tmp_archive = $tmp->file('dud.xxx');
 
 set_format;
+
+import_sign_key;
 
 if($opt_create) {
   file_type $_ for (@ARGV);
@@ -291,12 +316,12 @@ Create driver update:
                                 Note: if you don't set the architecture and mkdud can't
                                 find a hint in SOURCES either, an update for all supported
                                 architectures is created.
-  -d, --dist DIST               Either an openSUSE version (e.g. 13.1) or SLE version
-                                (e.g. sles11).
-                                Note that 'sle11' is a short hand for specifying both
-                                'sles11' and 'sled11'.
+  -d, --dist DIST               Either an openSUSE version (e.g. 13.2) or SLE version
+                                (e.g. sles12).
+                                Note that 'sle12' is a short hand for specifying both
+                                'sles12' and 'sled12'.
                                 Note also that there are no separate names for service packs.
-                                So 'sles11-sp1' is the same as 'sles11'. But see '--condition'
+                                So 'sles12-sp1' is the same as 'sles12'. But see '--condition'
                                 below for a way to target specific service packs.
                                 Option can be repeated to specify several distribution targets.
       --condition SCRIPT        Run SCRIPT and apply DUD only if SCRIPT has exit status 0.
@@ -332,6 +357,16 @@ Create driver update:
       --format FORMAT           Specify archive format for DUD. FORMAT=(cpio|tar)[.(gz|xz)].
                                 Default FORMAT is cpio.gz (gzip compressed cpio archive).
                                 Note: don't change the default. See README.
+      --sign                    Sign the driver update. This creates a detached signature.
+      --sign-key KEY_FILE       Use this key for signing. Alternatively, use the
+                                'sign-key' entry in ~/.mkdudrc.
+
+Configuration file:
+
+  \$HOME/.mkdudrc
+
+    sign-key=KEY_FILE
+      File name of the private signing key. The same as the 'sign-key' option.
 
 To create a driver update you need SOURCES. SOURCES can contain:
 
@@ -377,28 +412,28 @@ Examples:
   mkdud --show foo.dud
 
   # create update for hello.rpm
-  mkdud --create foo.dud --dist 13.1 hello.rpm 
+  mkdud --create foo.dud --dist 13.2 hello.rpm
 
   # create kernel update
-  mkdud --create foo.dud --dist 13.1 kernel-*.rpm 
+  mkdud --create foo.dud --dist 13.2 kernel-*.rpm
 
   # create kernel update and replace tg3 module
-  mkdud --create foo.dud --dist 13.1 kernel-*.rpm tg3.ko
+  mkdud --create foo.dud --dist 13.2 kernel-*.rpm tg3.ko
 
   # create kernel update, replace tg3 module, add some docs and give the dud a nice name
-  mkdud --create foo.dud --dist 13.1 --name 'for granny' kernel-*.rpm tg3.ko README
+  mkdud --create foo.dud --dist 13.2 --name 'for granny' kernel-*.rpm tg3.ko README
 
   # update some YaST stuff
-  mkdud --create foo.dud --dist 13.1 BootCommon.y*
+  mkdud --create foo.dud --dist 13.2 BootCommon.y*
 
   # add directory tree below 'newstuff/' to installation system
-  mkdud --create foo.dud --dist 13.1 newstuff
+  mkdud --create foo.dud --dist 13.2 newstuff
 
   # extract driver updates from ISO (you need root permissions for that)
   mkdud --create foo.dud xxx.iso
 
   # create update for hello.rpm and join with foo1.dud and foo2.dud
-  mkdud --create foo.dud --dist sle11 foo1.dud foo2.dud hello.rpm
+  mkdud --create foo.dud --dist sle12 foo1.dud foo2.dud hello.rpm
 
 = = = = = = = =
 
@@ -1219,6 +1254,12 @@ sub write_dud
   system "cd $tmp_src; $cmd_archive | $compr >$tmp_archive";
   system "cp $tmp_archive $file_name";
 
+  if($opt_sign) {
+    sign_file $tmp_archive;
+    system "cp ${tmp_archive}.asc ${file_name}.asc";
+    print "created detached signature ${file_name}.asc\n";
+  }
+
   return $tmp_src;
 }
 
@@ -1769,5 +1810,62 @@ sub set_format
   else {
     die "$opt_format: unsupported format spec\n";
   }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub import_sign_key
+{
+  return if !$opt_sign;
+
+  die "no sign key specified\n" if !$opt_sign_key;
+
+  my $gpg_dir = $tmp->dir();
+
+  my $key = $opt_sign_key;
+  $key =~ s/^~/$ENV{HOME}/;
+  die "$key: no such key file\n" unless -f $key;
+
+  my $keyid;
+  my $date;
+  my $priv;
+  my $pub;
+
+  if(open my $p, "gpg -v -v $key 2>&1 |") {
+    while(<$p>) {
+      $priv = 1 if /BEGIN PGP PRIVATE KEY BLOCK/;
+      $pub = 1 if /BEGIN PGP PUBLIC KEY BLOCK/;
+      $keyid = $1 if !$keyid && /^:signature packet:.*keyid\s+([0-9a-zA-Z]+)/;
+      $date = $1, last if !$date && $keyid && /created\s+(\d+)/;
+    }
+    close $p;
+  }
+
+  if($priv && $date) {
+    $sign_key_dir = $gpg_dir;
+
+    system "gpg --homedir=$gpg_dir --import $key >/dev/null 2>&1";
+
+    print "using signing key, keyid = $keyid\n";
+  }
+  else {
+    if($pub) {
+      die "$key: signing key is not a private key\n";
+    }
+    else {
+      die "$key: signing key not usable\n";
+    }
+  }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub sign_file
+{
+  my $file = $_[0];
+
+  return if !$sign_key_dir;
+
+  system "gpg --homedir=$sign_key_dir --batch --yes --armor --detach-sign $file";
 }
 
