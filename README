@@ -121,7 +121,26 @@ boot medium to apply it (literally: 'cat my.dud >> initrd'). No need for a
 'dud' boot option in this case.
 
 
-5. Signature
+5. DUD directory structure
+--------------------------
+
+Please read section 2.1 [Directory structure] in the Update-Media-HOWTO above first.
+
+Normally, mkdud ensures a correct directory layout. But sometimes you may
+want to specify a directory prefix yourself.
+
+For example, imagine you want to include your driver update directly into
+the initrd. You can do this simply by appending an (unsigned) driver update
+to the initrd. But when someone else tries this again, they will get into
+trouble as the directories are just merged. To avoid this, choose a
+directory prefix that's unlikely to conflict with others using the
+'--prefix' option.
+
+If this sounds a bit complicated just try the '--prefix' option and look at
+the unpacked driver update.
+
+
+6. Signature
 ------------
 
 When downloading a driver update the installer will verify the integrity of

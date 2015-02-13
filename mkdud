@@ -132,6 +132,7 @@ my $opt_format;
 my $opt_sign;
 my $opt_sign_direct;
 my $opt_sign_key;
+my $opt_dud_prefix;
 
 # global variables
 my $dud;
@@ -174,6 +175,7 @@ GetOptions(
   'sign-key=s'       => \$opt_sign_key,
   'force'            => \$opt_force,
   'format=s'         => \$opt_format,
+  'prefix=i'         => \$opt_dud_prefix,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -332,7 +334,8 @@ Create driver update:
                                 If SCRIPT has the special name ServicePackN (N = 1, 2, ...), a
                                 script that checks for service pack N is _generated_ and added.
                                 Option can be repeated to specify several conditions.
-  -p, --prio NUM                Set repository priority to NUM (default: 50).
+  -p, --prio NUM                Set repository priority to NUM; lower NUM means higher priority
+                                (default: 50).
   -n, --name NAME               Set driver update name. If you update packages or modules
                                 a default name is generated based on the package and module
                                 versions.
@@ -361,6 +364,7 @@ Create driver update:
       --format FORMAT           Specify archive format for DUD. FORMAT=(cpio|tar)[.(gz|xz)].
                                 Default FORMAT is cpio.gz (gzip compressed cpio archive).
                                 Note: don't change the default. See README.
+      --prefix NUM              First directory prefix of driver update. See README.
       --sign                    Sign the driver update.
       --detached-sign           Sign the driver update. This creates a detached signature.
       --sign-key KEY_FILE       Use this key for signing. Alternatively, use the
@@ -1255,12 +1259,13 @@ sub write_dud
     return undef;
   }
 
-  my $tmp_src = @duds == 1 ? $duds[0]{file} : $tmp_new;
+  my $tmp_src = (@duds == 1 && !defined($opt_dud_prefix)) ? $duds[0]{file} : $tmp_new;
 
-  if(@duds > 1) {
-    my $dud_cnt = 0;
+  if(@duds > 1 || defined($opt_dud_prefix)) {
+    my $dud_cnt = defined($opt_dud_prefix) ? $opt_dud_prefix : 1;
+    $dud_cnt = 1 if $dud_cnt < 0;
     for my $d (@duds) {
-      my $n = sprintf "%s/%02d", $tmp_new, ++$dud_cnt;
+      my $n = sprintf "%s/%02d", $tmp_new, $dud_cnt++;
       die "$n: $!\n" unless mkdir $n;
       die "$d->{file}/linux -> $n/linux: $!" unless rename "$d->{file}/linux", "$n/linux";
 
