@@ -219,6 +219,7 @@ my $tmp_mnt = $tmp->dir('mnt');
 my $tmp_err = $tmp->file('err');
 my $tmp_archive = $tmp->file('dud.xxx');
 $sign_key_dir = $tmp->dir('gpg');
+chmod 0700, $sign_key_dir;
 
 set_format;
 
