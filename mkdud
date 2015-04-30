@@ -104,6 +104,7 @@ sub analyze_dud;
 sub cleanup_old_duds;
 sub new_dud;
 sub analyze_ycp_files;
+sub set_mkisofs_metadata;
 sub write_dud;
 sub fix_duds;
 sub show_dud;
@@ -133,6 +134,10 @@ my $opt_sign;
 my $opt_sign_direct;
 my $opt_sign_key;
 my $opt_dud_prefix;
+my $opt_vendor;
+my $opt_preparer;
+my $opt_application;
+my $opt_volume;
 
 # global variables
 my $dud;
@@ -176,6 +181,10 @@ GetOptions(
   'force'            => \$opt_force,
   'format=s'         => \$opt_format,
   'prefix=i'         => \$opt_dud_prefix,
+  'volume=s'         => \$opt_volume,
+  'vendor=s'         => \$opt_vendor,
+  'preparer=s'       => \$opt_preparer,
+  'application=s'    => \$opt_application,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -362,7 +371,7 @@ Create driver update:
       --force                   Allow driver update to contain files that might break the
                                 installation. mkdud will normally remove those files and
                                 print a warning. Use this option to override.
-      --format FORMAT           Specify archive format for DUD. FORMAT=(cpio|tar)[.(gz|xz)].
+      --format FORMAT           Specify archive format for DUD. FORMAT=(cpio|tar|iso)[.(gz|xz)].
                                 Default FORMAT is cpio.gz (gzip compressed cpio archive).
                                 Note: don't change the default. See README.
       --prefix NUM              First directory prefix of driver update. See README.
@@ -370,6 +379,10 @@ Create driver update:
       --detached-sign           Sign the driver update. This creates a detached signature.
       --sign-key KEY_FILE       Use this key for signing. Alternatively, use the
                                 'sign-key' entry in ~/.mkdudrc.
+      --volume                  Set ISO volume id (if using format 'iso').
+      --vendor                  Set ISO publisher id (if using format 'iso').
+      --preparer                Set ISO data preparer id (if using format 'iso').
+      --application             Set ISO application id (if using format 'iso').
 
 Configuration file:
 
@@ -559,6 +572,7 @@ sub file_type
     my $f = $cmd ne 'gzip' ? $cmd : 'gz';
     my $z = `$cmd -dc $_[0] | file -b -`;
     $dud = "$1.$f" if $z =~ / (cpio|tar) archive/;
+    $dud = "iso.$f" if $z =~ / ISO 9660 CD-ROM /;
   }
   elsif(/ ISO 9660 CD-ROM /) {
     if(!$>) {
@@ -644,6 +658,7 @@ sub file_type
         my $f = $cmd ne 'gzip' ? $cmd : 'gz';
         my $z = `$gpg $_[0] | $cmd -dc | file -b -`;
         $dud = "$1.$f" if $z =~ / (cpio|tar) archive/;
+       $dud = "iso.$f" if $z =~ / ISO 9660 CD-ROM /;
       }
     }
   }
@@ -665,6 +680,28 @@ sub file_type
       else {
         system "$compr $_[0] | ( cd $old ; $cmd 2>/dev/null)";
       }
+    }
+    elsif($dud =~ /^iso\.(gz|xz)$/) {
+      my $compr = 'gzip -dc';
+      $compr = 'xz -dc' if $1 eq 'xz';
+      my $tmp_file = $tmp->file();
+      if($gpg_sign) {
+        system "$gpg $_[0] | $compr > $tmp_file";
+      }
+      else {
+        system "$compr $_[0] > $tmp_file";
+      }
+      if(!$>) {
+        system "mount -oro,loop $tmp_file $tmp_mnt";
+        file_type "$tmp_mnt", 1;
+        system "umount $tmp_mnt";
+      }
+      else {
+        print STDERR "$_[0]: error: need root permissions to analyze iso images\n";
+      }
+      unlink $tmp_file;
+      $dud = 'dummy';
+      $duds = 1;
     }
     elsif($dud eq 'dir') {
       copy_dud $_[0], $old;
@@ -1238,6 +1275,41 @@ sub analyze_ycp_files
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub set_mkisofs_metadata
+{
+  my $id = "dud";
+
+  # get update id
+  for my $d (@files) {
+    next if $d->{type} ne 'dud';
+
+    for (glob("$d->{file}/linux/suse/*")) {
+      next if -l $_;
+      if(open my $f, "$_/dud.config") {
+        while(<$f>) {
+          next if /^\s*#/;
+          if(/^\s*(\S+)\s*[:=]\s*(.*?)\s*$/) {
+            my $key = $1;
+            my $val = $2;
+            # print "$key -- >$val<\n";
+            if("\L$key" eq 'updateid') {
+              $id = "dud $val";
+            }
+          }
+        }
+        close $f;
+      }
+    }
+  }
+
+  $opt_application = $id if !defined $opt_application;
+  $opt_volume = "DriverUpdate" if !defined $opt_volume;
+  $opt_vendor = "mkdud $VERSION" if !defined $opt_vendor;
+  $opt_preparer = "mkdud $VERSION" if !defined $opt_preparer;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # $dud_dir = write_dud(\@files, $file_name)
 #
 # Write driver update to $file_name.
@@ -1284,6 +1356,16 @@ sub write_dud
 
   my $cmd_archive = 'find . | cpio --quiet -o -H newc -R 0:0';
   $cmd_archive = 'tar -cf - .' if $format_archive eq 'tar';
+
+  if($format_archive eq 'iso') {
+    set_mkisofs_metadata;
+    $cmd_archive = "genisoimage -l -r -pad -input-charset utf8";
+    $cmd_archive .= " -V '" . substr($opt_volume, 0, 32) . "'";
+    $cmd_archive .= " -A '" . substr($opt_application, 0, 128) . "'";
+    $cmd_archive .= " -p '" . substr($opt_preparer, 0, 128) . "'";
+    $cmd_archive .= " -publisher '" . substr($opt_vendor, 0, 128) . "'";
+    $cmd_archive .= " $tmp_src 2>/dev/null";
+  }
 
   my $compr = 'cat';
   $compr = 'gzip -9c' if $format_compr eq 'gz';
@@ -1845,7 +1927,7 @@ sub set_format
 {
   return if !defined $opt_format;
 
-  if($opt_format =~ /^(cpio|tar)(\.(gz|gzip|xz))?$/) {
+  if($opt_format =~ /^(cpio|tar|iso)(\.(gz|gzip|xz))?$/) {
     $format_archive = $1;
     $format_compr = $3;
     $format_compr = 'gz' if $format_compr eq 'gzip';

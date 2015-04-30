@@ -120,6 +120,10 @@ understands cpio archives, you can just append a DUD to the initrd on the
 boot medium to apply it (literally: 'cat my.dud >> initrd'). No need for a
 'dud' boot option in this case.
 
+It is also possible to create a DUD in ISO9660 format. Those can be used as
+block media but are not suitable to be used in the installer's 'dud' boot
+option.
+
 
 5. DUD directory structure
 --------------------------
