@@ -147,3 +147,13 @@ the update by checking the (detached) signature.
 Note that for sle11 due to a limitation in the installer you can only sign
 an uncompressed update. sle12/openSUSE 13.2 and later don't have this
 limitation.
+
+## openSUSE Development
+
+The package is automatically submitted from the `master` branch to
+[system:install:head](https://build.opensuse.org/package/show/system:install:head/mkdud)
+OBS project. From that place it is forwarded to
+[openSUSE Factory](https://build.opensuse.org/project/show/openSUSE:Factory).
+
+You can find more information about this workflow in the [linuxrc-devtools
+documentation](https://github.com/openSUSE/linuxrc-devtools#opensuse-development).
