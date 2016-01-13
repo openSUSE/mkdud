@@ -63,6 +63,24 @@ Examples:
   # mkdud --install instsys --dist sle11 --create foo3.dud yast2-bootloader/binaries/*
 </pre>
 
+There's still a catch: if you build the RPM yourself or in the openSUSE
+Build Service and so the RPM is probably signed with a key that is not included on the
+install media, you'll get a warning that the package could not be verified
+during installation.
+
+For this, `mkdud` can handle public gpg keys. You just add them on the command
+line. For example:
+
+<pre>
+  # mkdud -c foo.dud -d sle12 bar.rpm bar.pub
+</pre>
+
+will integrate bar.pub into the RPM key database so it is used to verify
+bar.rpm.
+
+Note that these keys are not copied into the target system. They are only
+part of the installation environment.
+
 ### Adding and running programs
 
 Sometimes you need to include and run a script to fix things. For example
