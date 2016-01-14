@@ -115,6 +115,7 @@ sub set_format;
 sub import_sign_key;
 sub get_sign_key_name;
 sub sign_file;
+sub get_obs_key;
 
 my %config;
 my $opt_create;
@@ -139,6 +140,7 @@ my $opt_vendor;
 my $opt_preparer;
 my $opt_application;
 my $opt_volume;
+my $opt_obs_keys;
 
 # global variables
 my $dud;
@@ -151,6 +153,8 @@ my $format_archive = "cpio";
 my $format_compr = "gz";
 my $sign_key_dir;
 my $sign_key_ok;
+my $obs;
+my $pubkey_info;
 
 # linuxrc versions in service packs
 my $servicepack;
@@ -179,6 +183,7 @@ GetOptions(
   'detached-sign'    => \$opt_sign,
   'sign'             => sub { $opt_sign = 1; $opt_sign_direct = 1 },
   'sign-key=s'       => \$opt_sign_key,
+  'obs-keys'         => \$opt_obs_keys,
   'force'            => \$opt_force,
   'format=s'         => \$opt_format,
   'prefix=i'         => \$opt_dud_prefix,
@@ -219,6 +224,23 @@ if(open my $f, "$ENV{HOME}/.mkdudrc") {
 }
 
 $opt_sign_key ||= $config{'sign-key'};
+
+if($opt_obs_keys) {
+  if(open my $f, "$ENV{HOME}/.oscrc") {
+    while(<$f>) {
+      if(m#^\[(https?://([^/\]]+))#) {
+        $obs->{server}{$2} = $1;
+      }
+    }
+    close $f;
+  }
+
+  for (sort keys %{$obs->{server}}) {
+    my $x = $_;
+    $x =~ s/^[^\.]*\.//;
+    $obs->{server_short}{$x} = $obs->{server}{$_};
+  }
+}
 
 my $tmp = Tmp::new($opt_save_temp);
 
@@ -384,6 +406,10 @@ Create driver update:
       --vendor                  Set ISO publisher id (if using format 'iso').
       --preparer                Set ISO data preparer id (if using format 'iso').
       --application             Set ISO application id (if using format 'iso').
+      --obs-keys                Retrieve and add project keys from the openSUSE build service
+                                as needed to verify the RPMs in SOURCES.
+                                See 'Adding RPMs notes' below.
+
 
 Configuration file:
 
@@ -400,8 +426,7 @@ To create a driver update you need SOURCES. SOURCES can contain:
   - RPMs. The packages are used according to the value of the --install option.
 
   - PGP pubic key files (ASCII). The files are added to the rpm key database for verifying
-    RPMs during the installation process. Note that the keys are not copied
-    into the target system (the installed system).
+    RPMs during the installation process. See 'Adding RPMs notes' below.
 
   - kernel modules.
 
@@ -425,6 +450,37 @@ To create a driver update you need SOURCES. SOURCES can contain:
     is added to the installation system.
 
   - ISO images. The images are unpacked and scanned for driver updates.
+
+Adding RPMs notes:
+
+  If you add RPMs to SOURCES, these RPMs can be used to update the installation system
+  and/or to be installed in the target system. See --install option on how to choose.
+
+  The best way is to go for 'repo' to install them in the target system as then they
+  are handled by the package manager and package dependencies are automatically resolved.
+
+  But there are two catches:
+
+    (1) The package must be actually required by the selected pattern or it must be
+    manually selected in the package manager; else it won't be installed at all.
+
+    This is normally no problem if you update a package (as it's likely required, else
+    you wouldn't want to update it) but if you try to install some uncommon package
+    it might not be selected.
+
+    (2) If the package is signed, the signature will be checked by the package manager
+    and you'll end up with a warning if the necessary public key is not available. This
+    particularly happens with packages from the openSUSE build service which were built
+    in some user's project.
+
+    For this, mkdud will package any pgp public key files you add to SOURCES in a way so
+    that they are used by the package manager during installation. They will *not* be
+    installed in the target system.
+
+    To ease this even more, the --obs-keys option causes mkdud to retrieve the necessary
+    keys for each RPM in SOURCES from the build service using the 'osc' tool. Note that
+    you must configure the build service access via .oscrc in your HOME directory for this
+    to work.
 
 References:
 
@@ -538,6 +594,15 @@ sub file_type
     $ft->{date} = $d;
 
     push @files, $ft;
+
+    if($opt_obs_keys && $opt_install{repo}) {
+      my $x = `rpm --nosignature -qp -i $_[0] 2>$tmp_err`;
+      if($x =~ /^Signature\s*:.*Key ID/m) {
+        $x = `rpm --nosignature -qp --qf '%{DISTURL}' $_[0] 2>$tmp_err`;
+        $x = get_obs_key $x, $_[0];
+        push @files, { type => 'pubkey', file => $x } if $x;
+      }
+    }
 
     return;
   }
@@ -1871,12 +1936,13 @@ sub show_single_dir
   }
 
   # ----------------------------
-  # other files
+  # public rpm keys
 
   for (glob("$dir/inst-sys/usr/lib/rpm/gnupg/keys/*")) {
     s#^.*/##;
     next unless /\.asc$/;
     $sect{pubkeys} .= "      $_\n";
+    $sect{pubkeys} .= "      ($pubkey_info->{$_})\n" if $pubkey_info->{$_};
   }
 
   # ----------------------------
@@ -2053,6 +2119,8 @@ sub get_sign_key_name
   my $date;
   my $priv;
   my $pub;
+  my $uid;
+  my $expire;
 
   local $_;
 
@@ -2061,13 +2129,18 @@ sub get_sign_key_name
       $priv = 1 if /BEGIN PGP PRIVATE KEY BLOCK/;
       $pub = 1 if /BEGIN PGP PUBLIC KEY BLOCK/;
       $keyid = $1 if !$keyid && /^:signature packet:.*keyid\s+([0-9a-zA-Z]+)/;
-      $date = $1, last if !$date && $keyid && /created\s+(\d+)/;
+      $uid = $1 if !$uid && /^:user ID packet: "(.+)"/;
+      $expire = $1 if !$expire && /pub.*( \[expires:[^\]]*\])/;
+      $date = $1 if !$date && $keyid && /created\s+(\d+)/;
     }
     close $p;
   }
 
   if($pub && $date) {
-    return sprintf "gpg-pubkey-%08x-%08x.asc", hex($keyid) & 0xffffffff, $date;
+    my $x = sprintf "gpg-pubkey-%08x-%08x.asc", hex($keyid) & 0xffffffff, $date;
+    $pubkey_info->{$x} = "$uid$expire";
+    # print ">$x: $uid$expire<\n";
+    return $x;
   }
   else {
     die "$key: signing key is not a public key\n";
@@ -2091,5 +2164,61 @@ sub sign_file
   else {
     system "gpg --homedir=$sign_key_dir --batch --yes --armor --detach-sign $file";
   }
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub get_obs_key
+{
+  my $url = $_[0];
+  my $rpm = $_[1];
+
+  my ($server, $prj, $uri);
+
+  if($url =~ m#obs://([^/]+)/([^/]+)/#) {
+    $server = $1;
+    $prj = $2;
+
+    $uri = $obs->{server}{$server};
+
+    if(!$uri) {
+      my $x = $server;
+      $x =~ s/^[^\.]*\.//;
+      $uri = $obs->{server_short}{$x};
+    }
+  }
+
+  if(!$server) {
+    print STDERR "$rpm: obs info missing, can't get sign key\n";
+
+    return undef;
+  }
+
+  if(!$uri) {
+    print STDERR "$rpm: no config for obs server \"$server\", can't get sign key\n";
+
+    return undef;
+  }
+
+  # print ">$uri $prj<\n";
+
+  my $k = `osc -A '$uri' signkey $prj 2>/dev/null`;
+
+  # stupid osc writes also other stuff to stdout...
+  $k =~ s/^.*(-----BEGIN PGP PUBLIC KEY BLOCK-----)/$1/s;
+
+  if($k =~ /^-----BEGIN PGP PUBLIC KEY BLOCK-----/) {
+    my $tmp_file = $tmp->file();
+    my $f;
+    open $f, ">$tmp_file";
+    print $f $k;
+    close $f;
+
+    return $tmp_file;
+  }
+
+  print STDERR "$rpm: no sign key found\n";
+
+  return undef;
 }
 
