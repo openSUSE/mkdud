@@ -706,13 +706,14 @@ sub file_type
   }
   elsif(-f $_[0] && -s _ && -T _) {
     open my $f, $_[0];
+    local $/;	# complete file
     my $l = <$f>;
     close $f;
     if($l =~ /^#!/) {
       push @files, { type => 'bin', file => $_[0] } if -x $_[0];
       return;
     }
-    elsif($l =~ /^-----BEGIN PGP PUBLIC KEY BLOCK-----/) {
+    elsif($l =~ /^-----BEGIN PGP PUBLIC KEY BLOCK-----/m) {
       push @files, { type => 'pubkey', file => $_[0] };
       return;
     }
