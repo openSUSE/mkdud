@@ -95,6 +95,7 @@ $Data::Dumper::Indent = 1;
 our $VERSION = "0.0";
 
 my @all_archs = qw ( x86_64 aarch64 armv7l i386 ia64 ppc ppc64 ppc64le s390 s390x );
+my $REPLACEABLE_YAST = '3.1.135';
 
 sub usage;
 sub get_file_arch;
@@ -155,6 +156,7 @@ my $sign_key_dir;
 my $sign_key_ok;
 my $obs;
 my $pubkey_info;
+my $yast_version = 0;
 
 # linuxrc versions in service packs
 my $servicepack;
@@ -571,7 +573,7 @@ sub file_type
   if(/^RPM/) {
     my $ft = { type => 'rpm', file => $_[0] };
 
-    my $f = `rpm --nosignature -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' $_[0] 2>$tmp_err`;
+    my $f = `rpm --nosignature -qp --qf '%{NAME}\t%{VERSION}\t%{RELEASE}.%{ARCH}' $_[0] 2>$tmp_err`;
     if($f eq "") {
       print STDERR "failed to read rpm: $_[0]\n";
       my $x;
@@ -581,7 +583,13 @@ sub file_type
       exit 1;
     }
 
-    $ft->{canonical_name} = $f;
+    # Check if yast base package is to be replaced and remember its version:
+    if($f =~ /^yast2\t(.+)\t/) {
+      $yast_version = $1;
+      # print STDERR "yast version: $yast_version\n";
+    }
+
+    ($ft->{canonical_name} = $f) =~ s/\t/-/g;
 
     my $ar = $f =~ /\.([^.]+)$/ ? $1 : undef;
     $ar = "i386" if $ar =~ /^i.86$/;
@@ -1048,10 +1056,13 @@ sub new_dud
 
     if(!$opt_force) {
       if(lstat "$base/inst-sys/sbin/yast") {
-        print STDERR
-          "Warning: prevented driver update from replacing /sbin/yast.\n" .
-          "If you really need to do this, use --force.\n";
-        unlink "$base/inst-sys/sbin/yast";
+        if(vercmp($yast_version, $REPLACEABLE_YAST) < 0 ) {
+          print STDERR
+            "Warning: prevented driver update from replacing /sbin/yast.\n" .
+            "yast2 >=$REPLACEABLE_YAST is considered safely replacable.\n" .
+            "If you really need to do this, use --force.\n";
+          unlink "$base/inst-sys/sbin/yast";
+        }
       }
 
       if(-e "$base/inst-sys/usr/src/packages") {
@@ -2223,3 +2234,11 @@ sub get_obs_key
   return undef;
 }
 
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+sub vercmp {
+  my ($s1, $s2) = @_; 
+  $s1 =~ s/(\d+)/sprintf("%010d", $1)/ge;
+  $s2 =~ s/(\d+)/sprintf("%010d", $1)/ge;
+  return $s1 cmp $s2;
+}
