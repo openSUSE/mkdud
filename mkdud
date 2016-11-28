@@ -287,7 +287,7 @@ if($opt_create) {
           print STDERR "Warning: using unsupported dist \"$_\"\n";
         }
         else {
-          die "Error: unsupported dist \"$_\" (use --help for supported dists, --force to override)\n";
+          die "Error: unsupported dist \"$_\" (e.g. sle12, tw; use --help for supported dists, --force to override)\n";
         }
       }
     }
