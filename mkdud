@@ -282,7 +282,14 @@ if($opt_create) {
     @dists = sort keys %d;
 
     for (@dists) {
-      die "unsupported dist \"$_\"\n" if !/^((leap)?\d+\.\d+|tw|sle[sd]\d+)$/;
+      if(!/^((leap)?\d+\.\d+|tw|sle[sd]\d+)$/) {
+        if($opt_force) {
+          print STDERR "Warning: using unsupported dist \"$_\"\n";
+        }
+        else {
+          die "Error: unsupported dist \"$_\" (use --force to override)\n";
+        }
+      }
     }
   }
 
@@ -406,9 +413,11 @@ Create driver update:
       --no-docs                 Don't include package documentation in unpacked instsys tree
                                 (to save space). This is the default setting.
       --keep-docs               Include package documentation in unpacked instsys tree.
-      --force                   Allow driver update to contain files that might break the
+      --force                   Override some internal consistency checks. This allows you to
+                                build driver updates containing files that might break the
                                 installation. mkdud will normally remove those files and
-                                print a warning. Use this option to override.
+                                print a warning. This also allows you to specify distributions
+                                with --dist that mkdud does not know about.
       --format FORMAT           Specify archive format for DUD. FORMAT=(cpio|tar|iso)[.(gz|xz)].
                                 Default FORMAT is cpio.gz (gzip compressed cpio archive).
                                 Note: don't change the default. See README.
