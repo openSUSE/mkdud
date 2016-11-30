@@ -614,10 +614,10 @@ sub file_type
 
     # check if rpm contains a driver update
     # (a directory /linux/suse/foo-bar or /<NUMBER>/linux/suse/foo-bar exists)
-    for my $l (`rpm --nosignature -qp -lv $_[0] 2>$tmp_err`) {
-      my @l = split ' ', $l;
-      next unless $l[0] =~ /^d/;
-      if($l[8] =~ m#/(\d+/)?linux/suse/\S+-\S+$#) {
+    for my $line (`rpm --nosignature -qp -lv $_[0] 2>$tmp_err`) {
+      my @field = split ' ', $line;
+      next unless $field[0] =~ /^d/;
+      if($field[8] =~ m#/(\d+/)?linux/suse/\S+-\S+$#) {
         $dud = 'cpio.rpm';
         last;
       }
