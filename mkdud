@@ -117,6 +117,8 @@ sub import_sign_key;
 sub get_sign_key_name;
 sub sign_file;
 sub get_obs_key;
+sub repack_as_rpm;
+sub sign_rpm;
 
 my %config;
 my $opt_create;
@@ -152,8 +154,10 @@ my %arch;
 my $use_all_archs = 0;
 my $format_archive = "cpio";
 my $format_compr = "gz";
+my $format_rpm = 0;		# re-package as rpm if set
 my $sign_key_dir;
 my $sign_key_ok;
+my $sign_key_id;
 my $obs;
 my $pubkey_info;
 my $yast_version = 0;
@@ -1533,11 +1537,20 @@ sub write_dud
 
   system "cd $tmp_src; $cmd_archive | $compr >$tmp_archive";
 
+  if($format_rpm) {
+    $tmp_archive = repack_as_rpm $tmp_archive;
+  }
+
   if($opt_sign) {
-    sign_file $tmp_archive;
-    if(!$opt_sign_direct) {
-      system "cp ${tmp_archive}.asc ${file_name}.asc";
-      print "created detached signature ${file_name}.asc\n";
+    if($format_rpm) {
+      sign_rpm $tmp_archive;
+    }
+    else {
+      sign_file $tmp_archive;
+      if(!$opt_sign_direct) {
+        system "cp ${tmp_archive}.asc ${file_name}.asc";
+        print "created detached signature ${file_name}.asc\n";
+      }
     }
   }
 
@@ -2165,6 +2178,10 @@ sub set_format
 
     # print "format = $format_archive.$format_compr\n";
   }
+  elsif($opt_format eq 'rpm') {
+    $format_archive = 'tar';
+    $format_rpm = 1;
+  }
   else {
     die "$opt_format: unsupported format spec\n";
   }
@@ -2199,6 +2216,7 @@ sub import_sign_key
 
   if($priv && $date) {
     $sign_key_ok = 1;
+    $sign_key_id = $keyid;
 
     system "gpg --homedir=$sign_key_dir --import $key >/dev/null 2>&1";
 
@@ -2334,4 +2352,70 @@ sub vercmp {
   $s1 =~ s/(\d+)/sprintf("%010d", $1)/ge;
   $s2 =~ s/(\d+)/sprintf("%010d", $1)/ge;
   return $s1 cmp $s2;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $new_file = repack_as_rpm($file)
+#
+# Re-pack archive $file as rpm. Returns the rpm name.
+#
+sub repack_as_rpm
+{
+  my $tmp_dir = $tmp->dir('rpm');
+  my $file = $_[0];
+
+  mkdir "$tmp_dir/SOURCES", 0755;
+  link $file, "$tmp_dir/SOURCES/dud.tar" or die "$file: $!\n";
+
+  my $c = <<'= = = = = = = =';
+Name:           dud
+Summary:        Driver Update
+License:        No License Info
+Group:          Other
+Version:        1.0
+Release:        0
+Source:         dud.tar
+BuildRoot:      %{_tmppath}/dud-build
+BuildArch:      noarch
+
+%description
+Driver Update
+
+%prep
+%setup -c dud -n dud
+%build
+%install
+  cp -a * %{buildroot}
+
+%files
+%defattr(-,root,root)
+/
+= = = = = = = =
+
+  open my $f, ">$tmp_dir/SOURCES/dud.spec";
+  print $f $c;
+  close $f;
+
+  system "rpmbuild -D '%_topdir $tmp_dir' -bb $tmp_dir/SOURCES/dud.spec >$tmp_dir/build.log 2>&1";
+
+  my $rpm_name = "$tmp_dir/RPMS/noarch/dud-1.0-0.noarch.rpm";
+
+  die "failed to create rpm\n" unless -f $rpm_name;
+
+  return $rpm_name;
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Sign an rpm.
+#
+sub sign_rpm
+{
+  my $file = $_[0];
+
+  return if !$sign_key_ok;
+
+  # note: the 'setsid' is needed because rpmsign will try to read the passphrase from /dev/tty
+  system "setsid rpmsign --addsign -D '%_gpg_path $sign_key_dir' -D '%_gpg_name $sign_key_id' $file </dev/null >$sign_key_dir/rpmsign.log 2>&1";
 }
