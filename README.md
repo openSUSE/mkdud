@@ -131,8 +131,11 @@ SLE12, openSUSE 13.2, and later versions:
 
 >  You can use either a cpio or tar archive and can compress it optionally
 >  with either gzip or xz. All formats may be used for signed DUDs.
->
->  If you create an rpm you can sign the rpm in the usual rpm-way to get a signed DUD.
+
+SLE12-SP1, Leap-42.1 and later versions:
+
+> If you create an RPM (use --format=rpm) you can sign the RPM in the usual RPM-way
+> to get a signed DUD.
 
 There is an advantage in using cpio instead of tar or rpm: because the Linux kernel
 understands cpio archives, you can just append a DUD to the initrd on the
