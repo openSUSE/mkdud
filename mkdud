@@ -605,6 +605,17 @@ sub file_type
       exit 1;
     }
 
+    # check if rpm contains a driver update
+    # (a directory /linux/suse/foo-bar or /<NUMBER>/linux/suse/foo-bar exists)
+    for my $l (`rpm --nosignature -qp -lv $_[0] 2>$tmp_err`) {
+      my @l = split ' ', $l;
+      next unless $l[0] =~ /^d/;
+      if($l[8] =~ m#/(\d+/)?linux/suse/\S+-\S+$#) {
+        $dud = 'cpio.rpm';
+        last;
+      }
+    }
+
     # Check if yast base package is to be replaced and remember its version:
     if($f =~ /^yast2\t(.+)\t/) {
       $yast_version = $1;
@@ -623,18 +634,20 @@ sub file_type
 
     $ft->{date} = $d;
 
-    push @files, $ft;
+    if(!$dud) {
+      push @files, $ft;
 
-    if($opt_obs_keys && $opt_install{repo}) {
-      my $x = `rpm --nosignature -qp -i $_[0] 2>$tmp_err`;
-      if($x =~ /^Signature\s*:.*Key ID/m) {
-        $x = `rpm --nosignature -qp --qf '%{DISTURL}' $_[0] 2>$tmp_err`;
-        $x = get_obs_key $x, $_[0];
-        push @files, { type => 'pubkey', file => $x } if $x;
+      if($opt_obs_keys && $opt_install{repo}) {
+        my $x = `rpm --nosignature -qp -i $_[0] 2>$tmp_err`;
+        if($x =~ /^Signature\s*:.*Key ID/m) {
+          $x = `rpm --nosignature -qp --qf '%{DISTURL}' $_[0] 2>$tmp_err`;
+          $x = get_obs_key $x, $_[0];
+          push @files, { type => 'pubkey', file => $x } if $x;
+        }
       }
-    }
 
-    return;
+      return;
+    }
   }
   elsif(/^ELF/) {
     @i = split /\s*,\s*/;
@@ -774,12 +787,13 @@ sub file_type
 
     my $old = sprintf "%s/%04d", $tmp_old, $dud_cnt++;
     die "$old: $!\n" unless mkdir $old;
-    if($dud =~ /^(cpio|tar)(\.(gz|xz))?$/) {
-      my $cmd = "cpio --quiet -dmiu";
+    if($dud =~ /^(cpio|tar)(\.(gz|xz|rpm))?$/) {
+      my $cmd = "cpio --quiet -dmiu --no-absolute-filenames";
       $cmd = "tar -xpf -" if $1 eq "tar";
       my $compr = 'cat';
       $compr = 'gzip -dc' if $3 eq 'gz';
       $compr = 'xz -dc' if $3 eq 'xz';
+      $compr = 'rpm2cpio' if $3 eq 'rpm';
       if($gpg_sign) {
         system "$gpg $_[0] | $compr | ( cd $old ; $cmd 2>/dev/null)";
       }
