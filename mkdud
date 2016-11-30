@@ -280,6 +280,7 @@ if($opt_create) {
     die "Error: distribution arg is required; use --dist.\n" if !@opt_dist;
     my %d;
     @dists = @opt_dist;
+    map { tr/-//d } @dists;
     map { s/^(tumbleweed|tw).*/tw/g } @dists;
     push @dists, "13.2" if grep { $_ eq "leap42.1" } @dists;
     @d{map { /^sle([sd]?)(\d+)/i ? $1 eq "" ? ("sles$2", "sled$2") : "sle\L$1$2" : "\L$_" } @dists} = ();
