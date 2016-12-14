@@ -1,5 +1,15 @@
 #! /usr/bin/perl
 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+# This script is maintained at https://github.com/openSUSE/ssob
+#
+# If you're in another project, this is just a copy.
+# You may update it to the latest version from time to time...
+#
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
 use strict;
 
 use Getopt::Long;
@@ -21,6 +31,7 @@ my @deps = qw ( .git/HEAD .git/refs/heads .git/refs/tags );
 
 my $branch;
 my $current_version;
+my $github_project;
 my @tags;
 my @all_tags;
 
@@ -53,6 +64,10 @@ if($opt_update && $opt_file ne '-' && -f($opt_file)) {
   }
 
   exit 0 if $ok;
+}
+
+if(`git config remote.origin.url` =~ m#github.com[:/]+(\S+/\S+)#) {
+  $github_project = $1;
 }
 
 @all_tags = `git tag`;
@@ -146,6 +161,9 @@ for (my $i = @tags - 1; $i > 0; $i--) {
     $merge = 1 if /^Merge: /;
     $merge = 0 if /^commit /;
     push @t2, $_ if !$merge;
+    if(/^    Merge pull request #(\d+) from /) {
+      push @t2, "merge pr gh#$github_project#$1\n" if $github_project;
+    }
   }
   @t = @t2;
 
@@ -155,7 +173,7 @@ for (my $i = @tags - 1; $i > 0; $i--) {
     $detail = 1 if /^    $/;
     $detail = 2 if /^    Conflicts:$/;
     $detail = 0 if /^commit /;
-    if(!$detail || !/^    [^\-\s]/) {
+    if(!$detail) {
       push @t2, $_ if $detail < 2;
     }
   }
