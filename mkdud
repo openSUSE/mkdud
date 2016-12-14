@@ -287,7 +287,7 @@ if($opt_create) {
     @dists = sort keys %d;
 
     for (@dists) {
-      if(!/^((leap)?\d+\.\d+|tw|sle[sd]\d+)$/) {
+      if(!/^((leap|casp)?\d+\.\d+|tw|sle[sd]\d+)$/) {
         if($opt_force) {
           print STDERR "Warning: using unsupported dist \"$_\"\n";
         }
@@ -379,13 +379,15 @@ Create driver update:
                                 Note: if you don't set the architecture and mkdud can't
                                 find a hint in SOURCES either, an update for all supported
                                 architectures is created.
-  -d, --dist DIST               Specify either an openSUSE, SLE, or Leap version or Tumbleweed.
-                                (examples: 13.2, sle12, leap42.1, tw).
+  -d, --dist DIST               Specify the product the DUD is for. Possible values include:
+                                13.2, sle12, leap42.2, casp1.0, tw standing for openSUSE 13.2,
+                                SLE12, Leap 42.2, CASP 1.0, Tumbleweed, respectively.
                                 Note that 'sle12' is a short hand for specifying both
                                 'sles12' and 'sled12'.
                                 Note also that there are no separate names for service packs.
                                 So 'sles12-sp1' is the same as 'sles12'. But see '--condition'
                                 below for a way to target specific service packs.
+                                See distribution name notes below for more details.
                                 Option can be repeated to specify several distribution targets.
       --condition SCRIPT        Run SCRIPT and apply DUD only if SCRIPT has exit status 0.
                                 If SCRIPT has the special name ServicePackN (N = 0, 1, 2, ...),
@@ -512,6 +514,31 @@ Adding RPMs notes:
     keys for each RPM in SOURCES from the build service using the 'osc' tool. Note that
     you must configure the build service access via .oscrc in your HOME directory for this
     to work.
+
+Distribution (product) name notes:
+
+  The --dist option accepts these values (case-insensitive; X, Y: decimal numbers):
+
+    - X.Y (e.g. 13.2) = openSUSE X.Y
+    - leapX.Y (e.g. leap42.2) = openSUSE Leap X.Y
+    - tw = openSUSE Tumbleweed
+    - sleX (e.g. sle12) = SUSE Linux Enterprise (Server + Desktop) X
+    - slesX (e.g. sles12) = SUSE Linux Enterprise Server X
+    - sledX (e.g. sled12) = SUSE Linux Enterprise Desktop X - but see notes below
+    - caspX.Y (e.g. casp1.0) = SUSE Containers as a Service Platform X.Y
+
+  Note that there aren't any products anymore that actually use 'sledX',
+  even SLED uses the 'sles' DUDs meanwhile. For this, please just use 'sleX'
+  when creating a DUD for a SUSE Linux Enterprise product.
+
+  Normally, a DUD will apply to the main release as well as to all the service packs.
+  To target a specific service pack, use the --condition option. For example:
+  '--dist sle12 --condition ServicePack3' to get a DUD exclusively for sle12-sp3.
+
+  This works also to target a specifc Tumbleweed release:
+  '--dist tw --condition 20161231'.
+
+  You can specify several '--condition' options. They must all be fulfilled (logical AND).
 
 References:
 
@@ -1729,15 +1756,18 @@ sub nice_arch_list
 
   my %p1;
   for (@$l) {
-    if(/^(\S+)-(sle([sd])(\d+)|(leap)?(\d+\.\d+)|tw)$/) {
+    if(/^(\S+)-(sle([sd])(\d+)|(leap|casp)?(\d+\.\d+)|tw)$/) {
       if($3 eq 's') {
         push @{$p1{"SLES $4"}}, $1;
       }
       elsif($3 eq 'd') {
         push @{$p1{"SLED $4"}}, $1;
       }
-      elsif($5) {
+      elsif($5 eq 'leap') {
         push @{$p1{"openSUSE Leap $6"}}, $1;
+      }
+      elsif($5 eq 'casp') {
+        push @{$p1{"CASP $6"}}, $1;
       }
       elsif($2 eq "tw") {
         push @{$p1{"openSUSE Tumbleweed"}}, $1;
@@ -2095,7 +2125,7 @@ sub get_service_pack
 
   my ($dist_name, $dist_ver, $dist_ver_sp, $dist_version_var);
 
-  if($dist =~ /^(sle.*?|leap)(\d+)$/) {
+  if($dist =~ /^(sle.*?|leap|casp)(\d+)$/) {
     $dist_name = $1;
     $dist_ver_sp = $dist_ver = $2;
     $dist_version_var = 'VERSION';
