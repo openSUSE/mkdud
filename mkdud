@@ -282,12 +282,14 @@ if($opt_create) {
     @dists = @opt_dist;
     map { tr/-//d } @dists;
     map { s/^(tumbleweed|tw).*/tw/g } @dists;
+    # map 'casp' to the new 'caasp'
+    map { s/^casp(\d)/caasp$1/ } @dists;
     push @dists, "13.2" if grep { $_ eq "leap42.1" } @dists;
     @d{map { /^sle([sd]?)(\d+)/i ? $1 eq "" ? ("sles$2", "sled$2") : "sle\L$1$2" : "\L$_" } @dists} = ();
     @dists = sort keys %d;
 
     for (@dists) {
-      if(!/^((leap|casp)?\d+\.\d+|tw|sle[sd]\d+)$/) {
+      if(!/^((leap|casp|caasp)?\d+\.\d+|tw|sle[sd]\d+)$/) {
         if($opt_force) {
           print STDERR "Warning: using unsupported dist \"$_\"\n";
         }
@@ -380,8 +382,8 @@ Create driver update:
                                 find a hint in SOURCES either, an update for all supported
                                 architectures is created.
   -d, --dist DIST               Specify the product the DUD is for. Possible values include:
-                                13.2, sle12, leap42.2, casp1.0, tw standing for openSUSE 13.2,
-                                SLE12, Leap 42.2, CASP 1.0, Tumbleweed, respectively.
+                                13.2, sle12, leap42.2, caasp1.0, tw standing for openSUSE 13.2,
+                                SLE12, Leap 42.2, CAASP 1.0, Tumbleweed, respectively.
                                 Note that 'sle12' is a short hand for specifying both
                                 'sles12' and 'sled12'.
                                 Note also that there are no separate names for service packs.
@@ -525,7 +527,7 @@ Distribution (product) name notes:
     - sleX (e.g. sle12) = SUSE Linux Enterprise (Server + Desktop) X
     - slesX (e.g. sles12) = SUSE Linux Enterprise Server X
     - sledX (e.g. sled12) = SUSE Linux Enterprise Desktop X - but see notes below
-    - caspX.Y (e.g. casp1.0) = SUSE Containers as a Service Platform X.Y
+    - caaspX.Y (e.g. caasp1.0) = SUSE Containers as a Service Platform X.Y
 
   Note that there aren't any products anymore that actually use 'sledX',
   even SLED uses the 'sles' DUDs meanwhile. For this, please just use 'sleX'
@@ -1756,7 +1758,7 @@ sub nice_arch_list
 
   my %p1;
   for (@$l) {
-    if(/^(\S+)-(sle([sd])(\d+)|(leap|casp)?(\d+\.\d+)|tw)$/) {
+    if(/^(\S+)-(sle([sd])(\d+)|(leap|casp|caasp)?(\d+\.\d+)|tw)$/) {
       if($3 eq 's') {
         push @{$p1{"SLES $4"}}, $1;
       }
@@ -1768,6 +1770,9 @@ sub nice_arch_list
       }
       elsif($5 eq 'casp') {
         push @{$p1{"CASP $6"}}, $1;
+      }
+      elsif($5 eq 'caasp') {
+        push @{$p1{"CAASP $6"}}, $1;
       }
       elsif($2 eq "tw") {
         push @{$p1{"openSUSE Tumbleweed"}}, $1;
@@ -2125,7 +2130,7 @@ sub get_service_pack
 
   my ($dist_name, $dist_ver, $dist_ver_sp, $dist_version_var);
 
-  if($dist =~ /^(sle.*?|leap|casp)(\d+)$/) {
+  if($dist =~ /^(sle.*?|leap|casp|caasp)(\d+)$/) {
     $dist_name = $1;
     $dist_ver_sp = $dist_ver = $2;
     $dist_version_var = 'VERSION';
