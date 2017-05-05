@@ -2135,7 +2135,7 @@ sub get_service_pack
 
   my ($dist_name, $dist_ver, $dist_ver_sp, $dist_version_var);
 
-  if($dist =~ /^(sle.*?|leap|kubic|casp|caasp)(\d+)$/) {
+  if($dist =~ /^(sle.*?)(\d+)$/) {
     $dist_name = $1;
     $dist_ver_sp = $dist_ver = $2;
     $dist_version_var = 'VERSION';
@@ -2152,11 +2152,14 @@ sub get_service_pack
       return "";
     }
   }
-  else {
+  elsif($dist =~ /^(leap|kubic|casp|caasp)(\d.*)$/) {
     $dist_name = "";
-    $dist_ver_sp = $dist_ver = $dist;
+    $dist_ver_sp = $dist_ver = $2;
     $dist_version_var = 'VERSION_ID';
     $dist_ver_sp .= ".$sp" if $sp;
+  }
+  else {
+    die "error: can't generate service pack check for dist \"$dist\"\n";
   }
 
   # do we have to go via linuxrc version...?
