@@ -284,6 +284,13 @@ if($opt_create) {
     map { s/^(tumbleweed|tw).*/tw/g } @dists;
     # map 'casp' to the new 'caasp'
     map { s/^casp(\d)/caasp$1/ } @dists;
+    # CaaSP should be aligned with the respective SLES
+    # caasp1.0 = sle12 (-sp2)
+    # cassp2.0 = sle12 (-sp3)
+    # caasp3.0 = sle12 (-sp3)
+    # caasp4.0 = sle15
+    push @dists, "sles12" if grep { /^caasp[123]\./ } @dists;
+    push @dists, "sles15" if grep { /^caasp4\./ } @dists;
     push @dists, "13.2" if grep { $_ eq "leap42.1" } @dists;
     @d{map { /^sle([sd]?)(\d+)/i ? $1 eq "" ? ("sles$2", "sled$2") : "sle\L$1$2" : "\L$_" } @dists} = ();
     @dists = sort keys %d;
@@ -383,7 +390,7 @@ Create driver update:
                                 architectures is created.
   -d, --dist DIST               Specify the product the DUD is for. Possible values include:
                                 13.2, sle12, leap42.3, kubic1.0, caasp1.0, tw standing for
-                                openSUSE 13.2, SLE12, Leap 42.3, Kubic 1.0, CAASP 1.0,
+                                openSUSE 13.2, SLE12, Leap 42.3, Kubic 1.0, CaaSP 1.0,
                                 Tumbleweed, respectively.
                                 Note that 'sle12' is a short hand for specifying both
                                 'sles12' and 'sled12'.
@@ -529,11 +536,25 @@ Distribution (product) name notes:
     - sleX (e.g. sle12) = SUSE Linux Enterprise (Server + Desktop) X
     - slesX (e.g. sles12) = SUSE Linux Enterprise Server X
     - sledX (e.g. sled12) = SUSE Linux Enterprise Desktop X - but see notes below
-    - caaspX.Y (e.g. caasp1.0) = SUSE Containers as a Service Platform X.Y
+    - caaspX.Y (e.g. caasp1.0) = SUSE Container as a Service Platform X.Y - see notes below
 
   Note that there aren't any products anymore that actually use 'sledX',
   even SLED uses the 'sles' DUDs meanwhile. For this, please just use 'sleX'
   when creating a DUD for a SUSE Linux Enterprise product.
+
+  Note also that CaaSP releases are based on SLE releases. Since driver
+  updates are usually released for a specific SLE version mkdud provides a
+  mapping CaaSP release <-> SLE release when building with --dist caspX.Y.
+  Currently:
+
+    - caasp1.0 = sles12 (-sp2)
+    - caasp2.0 = sles12 (-sp3)
+    - caasp3.0 = sles12 (-sp3)
+    - caasp4.0 = sles15
+
+  Driver updates built only for SLE12 will implicitly also work with
+  CaaSP3.0; those built only for SLE15 will also work with CaaSP4.0. But
+  this is not true for CaaSP1.0 and CaaSP2.0.
 
   Normally, a DUD will apply to the main release as well as to all the service packs.
   To target a specific service pack, use the --condition option. For example:
@@ -1777,7 +1798,7 @@ sub nice_arch_list
         push @{$p1{"CASP $6"}}, $1;
       }
       elsif($5 eq 'caasp') {
-        push @{$p1{"CAASP $6"}}, $1;
+        push @{$p1{"CaaSP $6"}}, $1;
       }
       elsif($2 eq "tw") {
         push @{$p1{"openSUSE Tumbleweed"}}, $1;
