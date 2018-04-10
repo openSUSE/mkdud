@@ -119,6 +119,7 @@ sub sign_file;
 sub get_obs_key;
 sub repack_as_rpm;
 sub sign_rpm;
+sub create_adddir;
 
 my %config;
 my $opt_create;
@@ -129,7 +130,6 @@ my $opt_prio = 50;
 my @opt_name;
 my @opt_exec;
 my $opt_no_docs = 1;
-my $opt_force;
 my $opt_save_temp;
 my %opt_install;
 my @opt_config;
@@ -144,6 +144,10 @@ my $opt_preparer;
 my $opt_application;
 my $opt_volume;
 my $opt_obs_keys;
+my $opt_fix_yast = 1;
+my $opt_fix_usr_src = 1;
+my $opt_fix_dist = 1;
+my $opt_fix_adddir = 1;
 
 # global variables
 my $dud;
@@ -186,14 +190,18 @@ GetOptions(
   'exec|x=s'         => \@opt_exec,
   'config=s'         => \@opt_config,
   'condition=s'      => \@opt_condition,
-  'may-replace-yast' => \$opt_force,
+  'may-replace-yast' => sub { $opt_fix_yast = 0 },
   'no-docs'          => \$opt_no_docs,
   'keep-docs'        => sub { $opt_no_docs = 0 },
   'detached-sign'    => \$opt_sign,
   'sign'             => sub { $opt_sign = 1; $opt_sign_direct = 1 },
   'sign-key=s'       => \$opt_sign_key,
   'obs-keys'         => \$opt_obs_keys,
-  'force'            => \$opt_force,
+  'force'            => sub { $opt_fix_yast = $opt_fix_usr_src = $opt_fix_dist = $opt_fix_adddir = 0 },
+  'fix-yast!'        => \$opt_fix_yast,
+  'fix-usr-src!'     => \$opt_fix_usr_src,
+  'fix-dist!'        => \$opt_fix_dist,
+  'fix-adddir!'      => \$opt_fix_adddir,
   'format=s'         => \$opt_format,
   'prefix=i'         => \$opt_dud_prefix,
   'volume=s'         => \$opt_volume,
@@ -297,11 +305,11 @@ if($opt_create) {
 
     for (@dists) {
       if(!/^((leap|kubic|casp|caasp)?\d+\.\d+|tw|sle[sd]\d+)$/) {
-        if($opt_force) {
-          print STDERR "Warning: using unsupported dist \"$_\"\n";
+        if(!$opt_fix_dist) {
+          print STDERR "***  Note: using unsupported dist \"$_\"\n";
         }
         else {
-          die "Error: unsupported dist \"$_\" (e.g. sle12, tw; use --help for supported dists, --force to override)\n";
+          die "Error: unsupported dist \"$_\" (e.g. sle15, tw; use --help for supported dists, --no-fix-dist to override)\n";
         }
       }
     }
@@ -430,11 +438,13 @@ Create driver update:
       --no-docs                 Don't include package documentation in unpacked instsys tree
                                 (to save space). This is the default setting.
       --keep-docs               Include package documentation in unpacked instsys tree.
-      --force                   Override some internal consistency checks. This allows you to
-                                build driver updates containing files that might break the
-                                installation. mkdud will normally remove those files and
-                                print a warning. This also allows you to specify distributions
-                                with --dist that mkdud does not know about.
+      --force                   Obsolete. Use one or more of --no-fix-XXX instead.
+      --no-fix-yast             Allow driver update to replace /sbin/yast. See 'Consistency checks'.
+      --no-fix-dist             Allow to specify an arbitrary distribution name with --dist. See
+                                'Consistency checks'.
+      --no-fix-usr-src          Allow driver update to include /usr/src/packages. See 'Consistency
+                                checks'.
+      --no-fix-adddir           Do not include an updated adddir script. See 'Consistency checks'.
       --format FORMAT           Specify archive format for DUD.
                                 FORMAT=((cpio|tar|iso)[.(gz|xz)])|rpm.
                                 Default FORMAT is cpio.gz (gzip compressed cpio archive).
@@ -564,6 +574,38 @@ Distribution (product) name notes:
   '--dist tw --condition 20161231'.
 
   You can specify several '--condition' options. They must all be fulfilled (logical AND).
+
+Consistency checks
+
+  It is possible to create driver updates that will predictably not work
+  because they interfere with the setup of the installation environment.
+
+  mkdud will warn you and try to work around these cases. But there still
+  may be valid use-cases so the --fix-XXX / --no-fix-XXX group of options
+  lets you enable (default) or disable these workarounds.
+
+  --[no-]fix-yast
+    In older SUSE versions /sbin/yast was a different script in the
+    installation environment than the one from the yast package. Updating
+    the special variant with the regular script will make the installation
+    impossible. mkdud recognizes this and removes /sbin/yast from driver
+    updates.
+
+  --[no-]fix-dist
+    The --dist option normally allows you to specify only distributions
+    mkdud knows about. With this option you may put anything there - in case
+    you know better.
+
+  --[no-]fix-usr-src
+    The installation system must not contain a /usr/src/packages directory.
+    mkdud normally removes it (and its content) from driver updates.
+
+  --[no-]fix-adddir
+    The /sbin/adddir script is used in the installation system to actually
+    apply that part of a driver update that replaces files in the
+    installation system. In older SUSE versions this script was not able to
+    update some programs from the 'coreutils' package. mkdud implicitly
+    includes an update for this script if it detects a need for it.
 
 References:
 
@@ -1149,22 +1191,41 @@ sub new_dud
       }
     }
 
-    if(!$opt_force) {
+    if($opt_fix_yast) {
       if(lstat "$base/inst-sys/sbin/yast") {
         if(vercmp($yast_version, $REPLACEABLE_YAST) < 0 ) {
           print STDERR
-            "Warning: prevented driver update from replacing /sbin/yast.\n" .
-            "yast2 >=$REPLACEABLE_YAST is considered safely replacable.\n" .
-            "If you really need to do this, use --force.\n";
+            "***  Note: prevented driver update from replacing /sbin/yast.\n" .
+            "***    yast2 >=$REPLACEABLE_YAST is considered safely replacable.\n" .
+            "***    If you really need to replace yast, use --no-fix-yast.\n";
           unlink "$base/inst-sys/sbin/yast";
         }
       }
+    }
 
+    if($opt_fix_usr_src) {
       if(-e "$base/inst-sys/usr/src/packages") {
         print STDERR
-          "Warning: prevented driver update from including /usr/src/packages.\n" .
-          "If you really need to do this, use --force.\n";
+          "***  Note: prevented driver update from including /usr/src/packages.\n" .
+          "***    If you really need this directory, use --no-fix-usr-src.\n";
         system "rm -rf $base/inst-sys/usr/src/packages";
+      }
+    }
+
+    if($opt_fix_adddir) {
+      # only for sle11, sle12, leap42.X, caasp1.X, caasp2.X, caasp3.X
+      if(grep { /^(sle[sd]?1[12]|leap42\.|caasp[1-3]\.)/ } (@dists, $dist)) {
+        my $danger = 0;
+        $danger ||= -e "$base/inst-sys/usr/bin/$_" for qw (chmod chown cp ln mktemp mv readlink rm);
+        if($danger) {
+          print STDERR
+            "***  Note: included an updated adddir script.\n" .
+            "***    If you do not need this, use --no-fix-adddir.\n";
+          mkdir "$base/install", 0755;
+          create_adddir "$base/install/adddir";
+
+          push @opt_exec, "cp adddir /sbin";
+        }
       }
     }
 
@@ -2483,4 +2544,44 @@ sub sign_rpm
 
   # note: the 'setsid' is needed because rpmsign will try to read the passphrase from /dev/tty
   system "setsid rpmsign --addsign -D '%_gpg_path $sign_key_dir' -D '%_gpg_name $sign_key_id' $file </dev/null >$sign_key_dir/rpmsign.log 2>&1";
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Create adddir script at given location.
+#
+# create_adddir(filename)
+#
+# The script lives here:
+#   https://github.com/openSUSE/installation-images/blob/master/data/initrd/adddir
+#
+sub create_adddir
+{
+  my $file = $_[0];
+
+  (my $c = <<"  ===") =~ s/^ +//mg;
+    H4sICIhyx1oCA2FkZGRpcgCdVclu2zAQvfMrJrIR2AFkxbm0deAC6amHoOihBQo0QcyIo5iIRBoi
+    ndRI+u+doShZzuI2NWCby5s3Cx+HgwPIrrXJrqVbCjEQAzCIys0gX1ZW0a+9N5CvoDRQ3XqsVlDd
+    QY1SldrcQl2RiRDF2uReWxM2rpSu4UEAlDaXJWhBw8LWoEEbWIwgV5AMpwkcHgISPUyO4AjGCzgF
+    ZQkK8JP2dQJzmEBqu/EELtkkt8Zrs8aITJHJMsYQNj3vZpcdPxMQWlmD4nc/WKmexurqHJTz4CnN
+    EDctzDlYtneehicJLw8iMzEwwZDthgRIdnPtqsGAXoK64Mi5DLTexC7hoIm+Xbk8Bb9EE/DskFwB
+    UWHubb3pVpswoN2FaA7ShXiyJvVdn3GdKrTjooWc74MAl2a+iEro6Jo6TH6ET7KAx0fAX9rDSc+w
+    UVKaKqyxoK/JkWbb8dZrMiQnCZx8zBTeZWZdljs0LMt9hj2wY5HOk0Wn1whd9EEst4eAnB3Ppr9Z
+    bBllTjlE88YoTPp2rXySuPXcfV1BWmzj6+3QHYpZPt8ttHjBRZTFUziWDsXf/NHdTR0kzd0LYj2F
+    1b2iS/ciZwygR93Iz1iT7pdgoUt8kwa3un9VcpxUXfxP4l0hG7/F/vv21O8bi7YTD/VL8vD6qcXI
+    wl/Xl7pes+00IfADuBh13SKE3pYwgYtxP/DmKL47eYMziL2JbIKECM7/SQc7U8rByG0qFq8bA95h
+    vfFLbW6ITnrQjntYa+5tyzDZUnyxnhy5lcwxgPn4jaxoImskQl02YG4FU0HZ0uvyCak/ItwjOC9r
+    P4NK3iJI6uurDdiCUyFntnQM4aeIiXPpkHc2gXi9UtKjIjJaqhyWd+RxdO3ywfT4/bsPx9PxRAi6
+    XFcr6ZdvaVaia93/+Pi1LZ0g2drV4SEl5Q9b5yIcrvh69u3zvFucDXkuxM7ljhqhM49633L8AczS
+    6oiiBwAA
+  ===
+
+  unlink $file;
+
+  if(open my $f, "| base64 -d | gunzip -c > $file") {
+    print $f $c;
+    close $f;
+  }
+
+  chmod 0755, $file;
 }
