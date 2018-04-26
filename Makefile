@@ -24,5 +24,5 @@ install:
 	@rm -f mkdud.tmp
 
 clean:
-	@rm -rf *~ package
+	@rm -rf *~ package changelog VERSION
 
