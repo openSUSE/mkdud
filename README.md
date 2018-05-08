@@ -12,6 +12,15 @@ http://en.opensuse.org/SDB:Linuxrc#p_driverupdate first.
 
 Get the latest version from the [openSUSE Build Service](https://software.opensuse.org/package/mkdud).
 
+## Blog
+
+See also my mini-series of articles around SUSE installation media and driver updates that highlight specific use-cases:
+
+- [Update the update process!](https://lizards.opensuse.org/2017/02/16/fun-things-to-do-with-driver-updates)
+- [But what if I need a new kernel?](https://lizards.opensuse.org/2017/03/16/fun-things-to-do-with-driver-updates-2)
+- [And what if I want to **remove** some files?](https://lizards.opensuse.org/2017/04/25/fun-things-to-do-with-driver-updates-3)
+- [Encrypted installation media](https://lizards.opensuse.org/2017/11/17/encrypted-installation-media)
+
 ## Usage
 
 ### Updating RPMs
