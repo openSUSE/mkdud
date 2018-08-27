@@ -243,7 +243,7 @@ if(open my $f, "$ENV{HOME}/.mkdudrc") {
 $opt_sign_key ||= $config{'sign-key'};
 
 if($opt_obs_keys) {
-  if(open my $f, "$ENV{HOME}/.oscrc") {
+  if(open(my $f, "$ENV{HOME}/.oscrc") || open(my $f, "$ENV{HOME}/.config/osc/oscrc")) {
     while(<$f>) {
       if(m#^\[(https?://([^/\]]+))#) {
         $obs->{server}{$2} = $1;
