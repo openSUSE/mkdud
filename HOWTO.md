@@ -43,7 +43,7 @@ Driver updates have to be properly signed to be accepted by the installer. If th
 see a dialog asking them for manual confirmation during the installation process.
 
 The signature can be detached (e.g. `foo.dud.asc` for `foo.dud`) or integrated. It's possible to use `mkdud --[detached-]sign` for this.
-But typically some extrernal infrastructure for signing is used.
+But typically some external infrastructure for signing is used.
 
 An interesting alternative is to use signed rpms for driver updates. This way you can get properly signed driver updates
 out of the [openSUSE Build Service](https://build.opensuse.org) for example.
