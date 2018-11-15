@@ -483,7 +483,7 @@ To create a driver update you need SOURCES. SOURCES can contain:
 
   - kernel modules.
 
-  - 'module.order' files. See driver update documentation.
+  - 'module.order' and 'module.config' files. See driver update documentation.
 
   - 'update.pre', 'update.post', 'update.post2' scripts.
     See driver update documentation.
@@ -838,7 +838,7 @@ sub file_type
       return;
     }
   }
-  elsif(-f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.order)$#) {
+  elsif(-f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.(order|config))$#) {
     push @files, { type => $2, file => $_[0] };
 
     return;
@@ -1144,6 +1144,12 @@ sub new_dud
         $dud_ok = 1;
         mkdir "$base/modules", 0755;
         system "cat '$_->{file}' >>$base/modules/module.order";
+      }
+
+      if($_->{type} eq 'module.config') {
+        $dud_ok = 1;
+        mkdir "$base/modules", 0755;
+        system "cat '$_->{file}' >>$base/modules/module.config";
       }
 
       if($_->{type} eq 'module') {
@@ -2009,6 +2015,7 @@ sub show_single_dir
   }
 
   $sect{modules} .= "      module.order\n" if -f "$dir/modules/module.order";
+  $sect{modules} .= "      module.config\n" if -f "$dir/modules/module.config";
 
   # ----------------------------
   # packages
