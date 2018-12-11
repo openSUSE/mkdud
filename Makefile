@@ -9,7 +9,6 @@ all:    archive
 
 archive: changelog
 	@if [ ! -d .git ] ; then echo no git repo ; false ; fi
-	mkdir -p package
 	git archive --prefix=$(PREFIX)/ $(BRANCH) > package/$(PREFIX).tar
 	tar -r -f package/$(PREFIX).tar --mode=0664 --owner=root --group=root --mtime="`git show -s --format=%ci`" --transform='s:^:$(PREFIX)/:' VERSION changelog
 	xz -f package/$(PREFIX).tar
@@ -24,5 +23,5 @@ install:
 	@rm -f mkdud.tmp
 
 clean:
-	@rm -rf *~ package changelog VERSION
+	@rm -rf *~ package/*.xz changelog VERSION
 
