@@ -4,6 +4,7 @@ VERSION	:= $(shell $(GIT2LOG) --version VERSION ; cat VERSION)
 BRANCH	:= $(shell [ -d .git ] && git branch | perl -ne 'print $$_ if s/^\*\s*//')
 PREFIX	:= mkdud-$(VERSION)
 BINDIR   = /usr/bin
+COMPLDIR = /usr/share/bash-completion/completions
 
 all:    archive
 
@@ -21,6 +22,7 @@ install:
 	@cp mkdud mkdud.tmp
 	@perl -pi -e 's/0\.0/$(VERSION)/ if /VERSION = /' mkdud.tmp
 	install -m 755 -D mkdud.tmp $(DESTDIR)$(BINDIR)/mkdud
+	install bash_completion/mkdud $(DESTDIR)$(COMPLDIR)/mkdud
 	@rm -f mkdud.tmp
 
 clean:

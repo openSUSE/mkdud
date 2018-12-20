@@ -1,0 +1,131 @@
+# bash completion for mkdud                              -*- shell-script -*-
+
+# complete options, directories, and files in directories
+
+_completeMkdud()
+{
+    local mode="general"
+    local g_options='--version --help -s --show -c --create'
+    local c_options='--save-temp -a --arch -d --dist --condition
+            -p --prio -n --name -x --exec -i --install --config
+            --no-docs --keep-docs --force --no-fix-yast --no-fix-dist
+            --no-fix-usr-src --no-fix-adddir --format --prefix
+            --sign --detached-sign --sign-key --volume --vendor
+            --preparer --application --obs-keys'
+    local dists='sle11 sle12 sle15 leap42.3 leap15.0 leap15.1 tw
+            caasp1.0 caasp2.0 caasp3.0 caasp4.0'
+    local sps='ServicePack0 ServicePack1 ServicePack2 ServicePack3 ServicePack4'
+
+    local cur prev words cword split
+    _init_completion -s || return 0
+
+    # mkdud only takes options, tabbing after command name adds a single dash
+    [[ $cword -eq 1 && -z "$cur" ]] &&
+    {
+        compopt -o nospace
+        COMPREPLY=( "-" )
+        return 0
+    }
+
+    COMPREPLY=()
+    case $prev in
+        --help|--version)
+            return 0
+            ;;
+    esac
+
+    local args i
+
+    # find which mode to use and how many real args used so far
+    for (( i=1; i < cword; i++ )); do
+        case ${words[i]} in
+            -c|--create)
+                mode="create"
+                args=$(($cword - i))
+                break
+                ;;
+            -s|--show)
+                mode="show"
+                args=$(($cword - i))
+                break
+                ;;
+        esac
+    done
+
+    # option completions
+    if [[ "$cur" == -* ]]; then
+        case $mode in
+            show)
+                ;;
+            create)
+                case $prev in
+                    -c|--create|-d|--dist|-n|--name|--condition)
+                        # error, no argument provided but mandatory
+                        return 0
+                        ;;
+                esac
+                COMPREPLY=( $( compgen -W '$c_options' -- $cur ) )
+                ;;
+            *)
+                COMPREPLY=( $( compgen -W '$g_options' -- $cur ) )
+                ;;
+        esac
+    # argument completions
+    else
+        case $mode in
+            show)
+                case $args in
+                    1)
+                        _filedir dud
+                        ;;
+                esac
+                ;;
+            create)
+                case $args in
+                    1)
+                        # DUD name is mandatory
+                        if [ -z "$cur" ]; then
+                            COMPREPLY=( "foo.dud" )
+                        fi
+                        ;;
+                    2)
+                        case $prev in
+                            -*)
+                                # error, no DUD name provided
+                                return 0
+                                ;;
+                            *)
+                                # distribution is more common than .iso file
+                                # and mandatory for *.rpm ("./"<tab> for iso)
+                                if [ -z "$cur" ]; then
+                                    COMPREPLY=( "--dist" )
+                                else
+                                    _filedir iso
+                                fi
+                                ;;
+                        esac
+                        ;;
+                    *)
+                        case $prev in
+                            -d|--dist)
+                                COMPREPLY=( $( compgen -W '$dists' -- $cur ) )
+                                ;;
+                            -n|--name)
+                                # name should not be a file name
+                                ;;
+                            *)
+                                if [ "$prev" == "--condition" ]; then
+                                    COMPREPLY=( $( compgen -W '$sps' -- $cur ) )
+                                fi
+                                _filedir
+                                ;;
+                        esac
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+} &&
+complete -F _completeMkdud mkdud
+
+# ex: ts=4 sw=4 et filetype=sh
