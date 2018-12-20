@@ -22,7 +22,7 @@ install:
 	@cp mkdud mkdud.tmp
 	@perl -pi -e 's/0\.0/$(VERSION)/ if /VERSION = /' mkdud.tmp
 	install -m 755 -D mkdud.tmp $(DESTDIR)$(BINDIR)/mkdud
-	install bash_completion/mkdud $(DESTDIR)$(COMPLDIR)/mkdud
+	install -m 644 -D bash_completion/mkdud $(DESTDIR)$(COMPLDIR)/mkdud
 	@rm -f mkdud.tmp
 
 clean:
