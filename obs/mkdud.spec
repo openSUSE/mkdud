@@ -50,6 +50,7 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root)
 /usr/bin/mkdud
+/usr/share/bash-completion/completions/mkdud
 %doc README.md COPYING
 
 %changelog
