@@ -658,15 +658,30 @@ Examples:
 #
 sub get_file_arch
 {
-  local $_;
+  my $file = $_[0];
 
-  for (`objdump -f $_[0] 2>/dev/null`) {
-    if(/^architecture:\s*(\S+)/) {
-      my $ar = $1;
-      $ar =~ s/^.*:|,$//g;
-      $ar = "i386" if $ar =~ /^i.86$/;
-      $ar =~ tr/-/_/;
-      return $ar if $ar ne "";
+  # Use objdump's 'file format' to determine architecture tag.
+  # Note that objdump's 'architecture' entry does not differentiate between
+  # 'ppc64' and 'ppc64le'.
+  my $arch_map = {
+    'elf32-i386' => 'i386',
+    'elf32-littlearm' => 'armv7hl',	# same for 'armv6hl'
+    'elf32-powerpc' => 'ppc',
+    'elf32-s390' => 's390',
+    'elf64-ia64-little' => 'ia64',
+    'elf64-littleaarch64' => 'aarch64',
+    'elf64-littleriscv' => 'riscv64',
+    'elf64-powerpc' => 'ppc64',
+    'elf64-powerpcle' => 'ppc64le',
+    'elf64-s390' => 's390x',
+    'elf64-x86-64' => 'x86_64',
+  };
+
+  for (`objdump -f $file 2>/dev/null`) {
+    if(/ file format (\S+)$/) {
+      my $ar = $arch_map->{$1};
+      die "$file: unsupported elf arch \"$1\"\n" if !$ar;
+      return $ar;
     }
   }
 
