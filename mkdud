@@ -290,7 +290,8 @@ if($opt_create) {
     my %d;
     @dists = @opt_dist;
     map { tr/-//d } @dists;
-    map { s/^(tumbleweed|tw).*/tw/g } @dists;
+    # kubic is part of tumbleweed
+    map { s/^(tumbleweed|tw|kubic).*/tw/g } @dists;
     # map 'casp' to the new 'caasp'
     map { s/^casp(\d)/caasp$1/ } @dists;
     # CaaSP should be aligned with the respective SLES
@@ -398,9 +399,9 @@ Create driver update:
                                 find a hint in SOURCES either, an update for all supported
                                 architectures is created.
   -d, --dist DIST               Specify the product the DUD is for. Possible values include:
-                                13.2, sle12, leap42.3, kubic1.0, caasp1.0, tw standing for
-                                openSUSE 13.2, SLE12, Leap 42.3, Kubic 1.0, CaaSP 1.0,
-                                Tumbleweed, respectively.
+                                13.2, sle12, leap42.3, caasp1.0, tw standing for
+                                openSUSE 13.2, SLE12, Leap 42.3, CaaSP 1.0, Tumbleweed,
+                                respectively.
                                 Note that 'sle12' is a short hand for specifying both
                                 'sles12' and 'sled12'.
                                 Note also that there are no separate names for service packs.
@@ -542,7 +543,7 @@ Distribution (product) name notes:
 
     - X.Y (e.g. 13.2) = openSUSE X.Y
     - leapX.Y (e.g. leap42.3) = openSUSE Leap X.Y
-    - kubicX.Y (e.g. kubic1.0) = openSUSE Kubic X.Y
+    - (obsolete) kubicX.Y (e.g. kubic1.0) = openSUSE Kubic X.Y
     - tw = openSUSE Tumbleweed
     - sleX (e.g. sle12) = SUSE Linux Enterprise (Server + Desktop) X
     - slesX (e.g. sles12) = SUSE Linux Enterprise Server X
@@ -562,6 +563,9 @@ Distribution (product) name notes:
     - caasp2.0 = sles12 (-sp3)
     - caasp3.0 = sles12 (-sp3)
     - caasp4.0 = sles15
+
+  Kubic is based on Tumbleweed. For compatibility, '--dist kubic...' variants are still
+  supported but will be mapped to Tumbleweed. Please use '--dist tw' directly.
 
   Driver updates built only for SLE12 will implicitly also work with
   CaaSP3.0; those built only for SLE15 will also work with CaaSP4.0. But
