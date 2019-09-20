@@ -1,0 +1,360 @@
+= mkdud(1)
+:doctype: manpage
+:manmanual: User Commands
+:mansource: mkdud {version}
+
+== Name
+
+mkdud - create and manage SUSE Linux driver updates
+
+
+== Synopsis
+
+*mkdud* [_OPTIONS_]... _SOURCES_...
+
+
+== Description
+
+mkdud manages driver updates (DUD) for SUSE Linux. You can create them, view their contents, and
+combine several driver updates into a single one.
+
+
+=== General Options
+
+*--version*::
+Show mkdud version.
+
+*--save-temp*::
+Keep temporary files.
+
+*--help*::
+Show this help text.
+
+
+=== Verify Driver Update
+
+*-s, --show*=_DUD_::
+Verify _DUD_ and print short summary. _DUD_ may be a file or directory or an ISO image.
+
+
+=== Create Driver Update
+
+*-c, --create*=_DUD_::
+Create new driver update _DUD_ from _SOURCES_.
+
+*-a, --arch*=_ARCH_::
+Build for target _ARCH_ (default: auto detected from _SOURCES_).
+Option can be repeated to specify several achitectures. +
+*Note*: if you don't set the architecture and mkdud can't
+find a hint in _SOURCES_ either an update for all supported
+architectures is created.
+
+*-d, --dist*=_DIST_::
+Specify the product the DUD is for. Possible values for _DIST_ include:
+`13.2`, `sle15`, `leap15.1`, `caasp1.0`, `tw` standing for
+openSUSE 13.2, SLE15, Leap 15.1, CaaSP 1.0, Tumbleweed, respectively. +
+*Note 1*: `sle15` is a short hand for specifying both `sles15` and `sled15`. +
+*Note 2*: There are no separate names for service packs.
+So `sles15-sp1` is the same as `sles15`. But see *--condition*
+below for a way to target specific service packs. +
+See *Distribution (Product) Names* below for more details. +
+Option can be repeated to specify several distribution targets.
+
+*--condition*=_SCRIPT_::
+Run _SCRIPT_ and apply DUD only if _SCRIPT_ has exit status 0.
+If _SCRIPT_ has the special name `ServicePackN` (_N_ = 0, 1, 2, ...),
+a script that checks for service pack _N_ is generated and added.
+_N_ = 0 refers to the main product (without service pack). +
+*Note*: For Tumbleweed you can pass the snapshot version as _N_
+to limit the DUD to a specific snapshot. +
+Option can be repeated to specify several conditions.
+
+*-p, --prio*=_NUM_::
+Set repository priority to _NUM_; lower _NUM_ means higher priority
+(default: 50).
+
+*-n, --name*=_NAME_::
+Set driver update name. If you update packages or modules
+a default name is generated based on the package and module
+versions. +
+Option can be repeated to specify a multi-line name.
+
+*-x, --exec*=_COMMAND_::
+Run _COMMAND_ right after the driver update has been loaded.
+Option can be repeated to specify several commands. +
+*Note*: The commands are run just before kernel modules
+are updated.
+
+*-i, --install*=_METHODS_::
+Package install method. _METHODS_ is a comma-separated list
+of: `instsys`, `repo`, `rpm` (default: `instsys,repo,rpm`). +
+- `instsys`: unpack packages in installation system +
+- `repo`: create repo with all packages and register with
+  yast before starting installation; repo will be removed
+  after the installation +
+- `rpm`: install packages at the end of the installation
+  using rpm (that is, not via repo & zypper) +
+
+*--config*=_KEY_=_VALUE_::
+Set linuxrc config option _KEY_ to _VALUE_. The options are changed
+just after the driver update has been loaded. +
+Option can be repeated to set several options.
+
+*--no-docs*::
+Don't include package documentation in unpacked instsys tree
+(to save space). +
+This is the default setting.
+
+*--keep-docs*::
+Include package documentation in unpacked instsys tree.
+
+*--force*::
+Obsolete. Use one or more of *--no-fix-XXX* instead.
+
+*--no-fix-yast*::
+Allow driver update to replace `/sbin/yast`. +
+See *Consistency checks*.
+
+*--no-fix-dist*::
+Allow to specify an arbitrary distribution name with *--dist*. +
+See *Consistency checks*.
+
+*--no-fix-usr-src*::
+Allow driver update to include `/usr/src/packages`. +
+See *Consistency checks*.
+
+*--no-fix-adddir*::
+Do not include an updated `adddir` script. +
+See *Consistency checks*.
+
+*--format*=_FORMAT_::
+Specify archive format for DUD. _FORMAT_=`((cpio|tar|iso)[.(gz|xz)])|rpm`. +
+Default _FORMAT_ is `cpio.gz` (gzip compressed cpio archive). +
+*Note*: please check `README` before changing the default.
+
+*--prefix*=_NUM_::
+First directory prefix of driver update. +
+See `README`.
+
+*--sign*::
+Sign the driver update.
+
+*--detached-sign*::
+Sign the driver update. This creates a detached signature.
+
+*--sign-key*=_KEY_FILE_::
+Use this key for signing. Alternatively, use the `sign-key` entry in `~/.mkdudrc`.
+
+*--volume*::
+Set ISO volume id (if using format `iso`).
+
+*--vendor*::
+Set ISO publisher id (if using format `iso`).
+
+*--preparer*::
+Set ISO data preparer id (if using format `iso`).
+
+*--application*::
+Set ISO application id (if using format `iso`).
+
+*--obs-keys*::
+Retrieve and add project keys from the openSUSE Build Service
+as needed to verify the RPMs in _SOURCES_. +
+See *Adding RPMs* below.
+
+
+== Configuration file
+
+mkdud reads `$HOME/.mkdudrc` at startup. There's only one possible entry:
+
+*sign-key*=_KEY_FILE_::
+File name of the private signing key. The same as the *--sign-key* option.
+
+
+== Driver Update SOURCES
+
+To create a driver update you need _SOURCES_. _SOURCES_ may be:
+
+- existing driver updates; either as archive, rpm, or unpacked directory;
+  all driver updates are joined
+
+- RPMs; Packages not containing a driver update are used according to the value
+  of the *--install* option
+
+- PGP pubic key files (ASCII); the files are added to the rpm key database for verifying
+  RPMs during the installation process; see *Adding RPMs* below
+
+- kernel modules
+
+- `module.order` and `module.config` files; see Update Media HOWTO.
+
+- `update.pre`, `update.post`, `update.post2` scripts; see Update Media HOWTO;
+  note that you can specify several `update.post`, etc. scripts; they are all run
+
+- `+*.ycp+`, `+*.ybc+`, or `+*.rb+` files; files are copied to the correct places automatically
+  if they contain a usable `File:` comment
+
+- `y2update` directories
+
+- program files (binaries, libraries, executable scripts); they are put into the
+  `install` dir; you can run them if needed using the *--exec* option
+
+- plain text files; they are considered documentation
+
+- directories that are neither DUDs nor YaST updates; everything below the directory
+is added to the installation system
+
+- ISO images; the images are unpacked and scanned for driver updates
+
+
+== Adding RPMs
+
+If you add RPMs to _SOURCES_, these RPMs can be used to update the installation system
+and/or to be installed in the target system. See *--install* option on how to choose.
+
+The best way is to go for `repo` to install them in the target system as then they
+are handled by the package manager and package dependencies are automatically resolved.
+
+But there are two catches:
+
+. The package must be actually required by the selected pattern or it must be
+manually selected in the package manager; else it won't be installed at all.
++
+This is normally no problem if you update a package (as it's likely required, else
+you wouldn't want to update it) but if you try to install some uncommon package
+it might not be selected.
+
+. If the package is signed, the signature will be checked by the package manager
+and you'll end up with a warning if the necessary public key is not available. This
+particularly happens with packages from the openSUSE Build Service which were built
+in some user's project.
++
+--
+For this, mkdud will package any pgp public key files you add to _SOURCES_ in a way so
+that they are used by the package manager during installation. They will *not* be
+installed in the target system.
+
+To ease this even more, the *--obs-keys* option causes mkdud to retrieve the necessary
+keys for each RPM in _SOURCES_ from the build service using the `osc` tool. Note that
+you must configure the build service access via `$HOME/.oscrc` for this to work.
+--
+
+== Distribution (Product) Names:
+
+The *--dist* option accepts these values (case-insensitive; X, Y: decimal numbers):
+
+- X.Y (e.g. `13.2`) = openSUSE X.Y
+- leapX.Y (e.g. `leap15.1`) = openSUSE Leap X.Y
+- (obsolete) kubicX.Y (e.g. kubic1.0) = openSUSE Kubic X.Y
+- tw = openSUSE Tumbleweed
+- sleX (e.g. sle15) = SUSE Linux Enterprise (Server + Desktop) X
+- slesX (e.g. sles15) = SUSE Linux Enterprise Server X
+- sledX (e.g. sled15) = SUSE Linux Enterprise Desktop X - but see notes below
+- caaspX.Y (e.g. caasp1.0) = SUSE Container as a Service Platform X.Y - see notes below
+
+*Note 1*: there aren't any products anymore that actually use `sledX`,
+even SLED uses the `sles` DUDs meanwhile. Because of this, please just use `sleX`
+when creating a DUD for a SUSE Linux Enterprise product.
+
+*Note 2*: CaaSP releases are based on SLE releases. Since driver
+updates are usually released for a specific SLE version mkdud provides a
+mapping CaaSP release <-> SLE release when building with *--dist*=caspX.Y.
+Currently:
+
+- caasp1.0 = sles12 (-sp2)
+- caasp2.0 = sles12 (-sp3)
+- caasp3.0 = sles12 (-sp3)
+- caasp4.0 = sles15
+
+Kubic is based on Tumbleweed. For compatibility, *--dist*=kubic... variants are still
+supported but will be mapped to Tumbleweed. Please use *--dist*=tw directly.
+
+Driver updates built for SLE12 will implicitly also work with
+CaaSP3.0; those built for SLE15 will implicitly also work with CaaSP4.0. But
+this is not true for CaaSP1.0 and CaaSP2.0.
+
+Normally, a DUD will apply to the main release as well as to all the service packs.
+To target a specific service pack, use the *--condition* option.
+For example, to get a DUD exclusively for `sle15-sp1`:
+*--dist*=sle15{nbsp}**--condition**=ServicePack1
+
+This works also to target a specifc Tumbleweed release:
+*--dist*=tw{nbsp}**--condition**=20191231.
+
+You can specify several *--condition* options. They must all be fulfilled (logical *and*).
+
+
+== Consistency Checks
+
+It is possible to create driver updates that will predictably not work
+because they interfere with the setup of the installation environment.
+
+mkdud will warn you and try to work around these cases. But there still
+may be valid use-cases so the *--fix-XXX* / *--no-fix-XXX* group of options
+lets you enable (default) or disable these workarounds.
+
+-  *--[no-]fix-yast* +
+In older SUSE versions `/sbin/yast` was a different script in the
+installation environment than the one from the yast package. Updating
+the special variant with the regular script would make the installation
+impossible. mkdud recognizes this and removes `/sbin/yast` from driver
+updates.
+
+-  *--[no-]fix-dist* +
+The *--dist* option normally allows you to specify only distributions
+mkdud knows about. With this option you may put anything there - in case
+you know better.
+
+-  *--[no-]fix-usr-src* +
+The installation system must not contain a `/usr/src/packages` directory.
+mkdud normally removes it (and its content) from driver updates.
+
+-  *--[no-]fix-adddir* +
+The `/sbin/adddir` script is used in the installation system to actually
+apply the part of a driver update that replaces files in the
+installation system. In older SUSE versions this script was not able to
+update some programs from the `coreutils` package. mkdud implicitly
+includes an update for this script if it detects a need for it.
+
+
+== Examples
+
+----
+# show content of foo.dud
+mkdud --show foo.dud
+
+# create update for hello.rpm
+mkdud --create foo.dud --dist leap15.1 hello.rpm
+
+# create kernel update
+mkdud --create foo.dud --dist leap15.1 kernel-*.rpm
+
+# create kernel update and replace tg3 module
+mkdud --create foo.dud --dist leap15.1 kernel-*.rpm tg3.ko
+
+# create kernel update, replace tg3 module, add some docs
+# and give the driver update a nice name
+mkdud --create foo.dud --dist leap15.1 --name 'for granny' kernel-*.rpm tg3.ko README
+
+# update some YaST stuff
+mkdud --create foo.dud --dist leap15.1 BootCommon.y*
+
+# add directory tree below newstuff/ to installation system
+mkdud --create foo.dud --dist leap15.1 newstuff
+
+# extract driver updates from ISO (you need root permissions for that)
+mkdud --create foo.dud xxx.iso
+
+# create update for hello.rpm and join with foo1.dud and foo2.dud
+mkdud --create foo.dud --dist sle15 foo1.dud foo2.dud hello.rpm
+----
+
+Find more usage examples here: https://github.com/openSUSE/mkdud/blob/master/HOWTO.md.
+
+
+== See Also
+
+- more documentation: `/usr/share/doc/packages/mkdud` +
+- mkdud web site: https://github.com/openSUSE/mkdud +
+- Update Media HOWTO: http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/index.html
+- openSUSE Build Service: https://build.opensuse.org

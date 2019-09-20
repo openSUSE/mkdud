@@ -18,9 +18,15 @@
 
 Name:           mkdud
 BuildRequires:  xz
+%if 0%?suse_version >= 1500 || 0%?sle_version >= 120400
+BuildRequires:  rubygem(asciidoctor)
+%else
+BuildRequires:  asciidoc
+BuildRequires:  libxslt-tools
+%endif
 Requires:       gpg2
 Summary:        Create driver update from rpms
-License:        GPL-3.0+
+License:        GPL-3.0-or-later
 Group:          Hardware/Other
 Version:        0.0
 Release:        0
@@ -42,7 +48,8 @@ Authors:
 %build
 
 %install
-  make install DESTDIR=%{buildroot}
+  %make_install
+  install -D -m 644 mkdud.1 %{buildroot}%{_mandir}/man1/mkdud.1
 
 %clean
 rm -rf %{buildroot}
@@ -51,6 +58,12 @@ rm -rf %{buildroot}
 %defattr(-,root,root)
 /usr/bin/mkdud
 /usr/share/bash-completion
-%doc README.md COPYING
+%doc %{_mandir}/man1/mkdud.*
+%doc *.md
+%if %suse_version >= 1500
+%license COPYING
+%else
+%doc COPYING
+%endif
 
 %changelog
