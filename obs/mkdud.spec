@@ -22,7 +22,9 @@ BuildRequires:  xz
 BuildRequires:  rubygem(asciidoctor)
 %else
 BuildRequires:  asciidoc
+%if 0%?suse_version >= 1310 || 0%?sle_version >= 120000
 BuildRequires:  libxslt-tools
+%endif
 %endif
 Requires:       gpg2
 Summary:        Create driver update from rpms
