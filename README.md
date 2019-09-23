@@ -2,15 +2,20 @@
 
 ## About
 
-This is about driver updates. If you're not familiar with them, please look at
-http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/index.html and
-http://en.opensuse.org/SDB:Linuxrc#p_driverupdate first.
+This is about driver updates for openSUSE/SLES. If you're not familiar with them, please look at
+- http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/index.html
+- http://en.opensuse.org/SDB:Linuxrc#p_driverupdate
 
 `mkdud` is a tool that makes it easy to create driver updates for SUSE distributions.
 
 ## Downloads
 
-Get the latest version from the [openSUSE Build Service](https://software.opensuse.org/package/mkdud).
+Packages for openSUSE and SLES are built at the [openSUSE Build Service](https://build.opensuse.org). You can grab
+
+- [official releases](https://software.opensuse.org/package/mkdud) or
+
+- [latest stable versions](https://software.opensuse.org/download/package?project=home:snwint:ports&package=mkdud)
+  from my [ports](https://build.opensuse.org/package/show/home:snwint:ports/mkdud) project
 
 ## Blog
 
@@ -214,3 +219,7 @@ Development happens exclusively in the `master` branch. The branch is used for a
 You can find more information about the changes auto-generation and the
 tools used for jenkis submissions in the [linuxrc-devtools
 documentation](https://github.com/openSUSE/linuxrc-devtools#opensuse-development).
+
+## License
+
+The project is using [GPL-3.0](https://opensource.org/licenses/GPL-3.0).

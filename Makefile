@@ -18,13 +18,23 @@ archive: changelog
 changelog: $(GITDEPS)
 	$(GIT2LOG) --changelog changelog
 
-install:
+install: doc
 	@cp mkdud mkdud.tmp
 	@perl -pi -e 's/0\.0/$(VERSION)/ if /VERSION = /' mkdud.tmp
 	install -m 755 -D mkdud.tmp $(DESTDIR)$(BINDIR)/mkdud
 	install -m 644 -D bash_completion/mkdud $(DESTDIR)$(COMPLDIR)/mkdud
 	@rm -f mkdud.tmp
 
+doc:
+	@if [ -x /usr/bin/asciidoctor ] ; then \
+	  asciidoctor -b manpage -a version=$(VERSION) mkdud_man.adoc ;\
+	else \
+	  a2x -f manpage -a version=$(VERSION) mkdud_man.adoc ;\
+	fi
+# a2x -f docbook -a version=$(VERSION) mkdud_man.adoc
+# dblatex mkdud_man.xml
+
 clean:
-	@rm -rf *~ package changelog VERSION
+	@rm -rf *~ */*~ package changelog VERSION
+	@rm -f mkdud.1 mkdud_man.xml mkdud_man.pdf
 
