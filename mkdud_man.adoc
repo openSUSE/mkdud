@@ -145,6 +145,12 @@ Sign the driver update. This creates a detached signature.
 *--sign-key*=_KEY_FILE_::
 Use this key for signing. Alternatively, use the `sign-key` entry in `~/.mkdudrc`.
 
+*--sign-key-id*=_KEY_ID_::
+Use this key id for signing (anything gpg accepts).
+Alternatively, use the `sign-key-id` entry in `~/.mkdudrc`. +
+If both *--sign-key* and *--sign-key-id* are specified, *--sign-key-id* wins. +
+*Note*: gpg might show an interactive dialog asking for a password to unlock the key.
+
 *--volume*::
 Set ISO volume id (if using format `iso`).
 
@@ -169,6 +175,9 @@ mkdud reads `$HOME/.mkdudrc` at startup. There's only one possible entry:
 
 *sign-key*=_KEY_FILE_::
 File name of the private signing key. The same as the *--sign-key* option.
+
+*sign-key-id*=_KEY_ID_::
+Key id of the signing key. The same as the *--sign-key-id* option.
 
 
 == Driver Update SOURCES

@@ -138,6 +138,7 @@ my $opt_format;
 my $opt_sign;
 my $opt_sign_direct;
 my $opt_sign_key;
+my $opt_sign_key_id;
 my $opt_dud_prefix;
 my $opt_vendor;
 my $opt_preparer;
@@ -196,6 +197,7 @@ GetOptions(
   'detached-sign'    => \$opt_sign,
   'sign'             => sub { $opt_sign = 1; $opt_sign_direct = 1 },
   'sign-key=s'       => \$opt_sign_key,
+  'sign-key-id=s'    => \$opt_sign_key_id,
   'obs-keys'         => \$opt_obs_keys,
   'force'            => sub { $opt_fix_yast = $opt_fix_usr_src = $opt_fix_dist = $opt_fix_adddir = 0 },
   'fix-yast!'        => \$opt_fix_yast,
@@ -241,6 +243,7 @@ if(open my $f, "$ENV{HOME}/.mkdudrc") {
 }
 
 $opt_sign_key ||= $config{'sign-key'};
+$opt_sign_key_id ||= $config{'sign-key-id'};
 
 if($opt_obs_keys) {
   my $f;
@@ -413,6 +416,7 @@ Create driver update:
       --sign                    Sign the driver update.
       --detached-sign           Sign the driver update creating a detached signature.
       --sign-key KEY_FILE       Use this key for signing.
+      --sign-key-id KEY_ID      Use this key id for signing (anything gpg accepts).
       --volume                  Set ISO volume id (if using format 'iso').
       --vendor                  Set ISO publisher id (if using format 'iso').
       --preparer                Set ISO data preparer id (if using format 'iso').
@@ -2117,6 +2121,17 @@ sub set_format
 sub import_sign_key
 {
   return if !$opt_sign;
+
+  if($opt_sign_key_id) {
+    $sign_key_ok = 1;
+    $sign_key_id = $opt_sign_key_id;
+    $sign_key_dir = "$ENV{HOME}/.gnupg";
+    die "$sign_key_dir: no such gpg directory\n" unless -d $sign_key_dir;
+
+    print "using signing key, keyid = $sign_key_id\n";
+
+    return;
+  }
 
   die "no sign key specified\n" if !$opt_sign_key;
 
