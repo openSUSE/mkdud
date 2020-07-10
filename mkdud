@@ -1207,9 +1207,9 @@ close F;
 dir=${0%/*/*}
 dir=${dir#/*/}
 
-repo="baseurl=dir:///$dir/repo"
+repo="baseurl=dir:(//)?/$dir/repo"
 
-for i in `grep -l $repo /etc/zypp/repos.d/*` ; do
+for i in `grep -El $repo /etc/zypp/repos.d/*` ; do
   [ -f "$i" ] && rm "$i"
 done
 = = = = = = = =
