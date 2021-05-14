@@ -300,6 +300,8 @@ if($opt_create) {
     map { tr/-//d } @dists;
     # kubic is part of tumbleweed
     map { s/^(tumbleweed|tw|kubic).*/tw/g } @dists;
+    # map 'micro' to 'suse-microos'
+    map { s/^micro(\d)/suse-microos$1/ } @dists;
     # map 'casp' to the new 'caasp'
     map { s/^casp(\d)/caasp$1/ } @dists;
     # CaaSP should be aligned with the respective SLES
@@ -312,9 +314,13 @@ if($opt_create) {
     push @dists, "13.2" if grep { $_ eq "leap42.1" } @dists;
     @d{map { /^sle([sd]?)(\d+)/i ? $1 eq "" ? ("sles$2", "sled$2") : "sle\L$1$2" : "\L$_" } @dists} = ();
     @dists = sort keys %d;
+    @d{map { /^(\d+)\.(\d+)$/ && $1 >= 15 ? ("leap$1.$2", "sles$1", "sled$1") : $_ } @dists} = ();
+    @d{map { /^(\d+)$/ && $1 >= 15 ? ("sles$1", "sled$1") : $_ } @dists} = ();
+    @dists = sort keys %d;
+    @dists = grep { !(/^(\d+)(\.(\d+))?$/ && $1 >= 15) } @dists;
 
     for (@dists) {
-      if(!/^((leap|kubic|casp|caasp)?\d+\.\d+|tw|sle[sd]\d+)$/) {
+      if(!/^((leap|kubic|casp|caasp|suse-microos)?\d+\.\d+|tw|sle[sd]\d+)$/) {
         if(!$opt_fix_dist) {
           print STDERR "***  Note: using unsupported dist \"$_\"\n";
         }
@@ -401,7 +407,7 @@ Create driver update:
 
   -c, --create DUD              Create new driver update DUD from SOURCES.
   -a, --arch ARCH               Build for target ARCH (default: auto detected from SOURCES).
-  -d, --dist DIST               Specify the product the DUD is for (e.g. sle12).
+  -d, --dist DIST               Specify the product the DUD is for (e.g. sle15).
       --condition SCRIPT        Run SCRIPT and apply DUD only if SCRIPT has exit status 0.
   -p, --prio NUM                Set repository priority to NUM (default: 50).
   -n, --name NAME               Set driver update name.
@@ -1667,12 +1673,12 @@ sub nice_arch_list
 
   my %p1;
   for (@$l) {
-    if(/^(\S+)-(sle([sd])(\d+)|(leap|kubic|casp|caasp)?(\d+\.\d+)|tw)$/) {
+    if(/^(\S+)-(sle([sd])(\d+)|(leap|kubic|casp|caasp|suse-microos)?(\d+\.\d+)|tw)$/) {
       if($3 eq 's') {
-        push @{$p1{"SLES $4"}}, $1;
+        push @{$p1{"SUSE Linux Enterprise Server $4"}}, $1;
       }
       elsif($3 eq 'd') {
-        push @{$p1{"SLED $4"}}, $1;
+        push @{$p1{"SUSE Linux Enterprise Desktop $4"}}, $1;
       }
       elsif($5 eq 'leap') {
         push @{$p1{"openSUSE Leap $6"}}, $1;
@@ -1681,10 +1687,13 @@ sub nice_arch_list
         push @{$p1{"openSUSE Kubic $6"}}, $1;
       }
       elsif($5 eq 'casp') {
-        push @{$p1{"CASP $6"}}, $1;
+        push @{$p1{"SUSE Containers as a Service Platform $6"}}, $1;
       }
       elsif($5 eq 'caasp') {
-        push @{$p1{"CaaSP $6"}}, $1;
+        push @{$p1{"SUSE Containers as a Service Platform $6"}}, $1;
+      }
+      elsif($5 eq 'suse-microos') {
+        push @{$p1{"SUSE Linux Enterprise Micro $6"}}, $1;
       }
       elsif($2 eq "tw") {
         push @{$p1{"openSUSE Tumbleweed"}}, $1;
@@ -1709,9 +1718,9 @@ sub nice_arch_list
 
   for (sort keys %p2) {
     my $s = $_;
-    if($s =~ s/^SLED /SLES / && $p2{$s} eq $p2{$_}) {
+    if($s =~ s/ Desktop / Server / && $p2{$s} eq $p2{$_}) {
       my $e = $_;
-      $e =~ s/^SLED /SLE /;
+      $e =~ s/ Desktop / /;
       $p2{$e} = $p2{$_};
       delete $p2{$_};
       delete $p2{$s};

@@ -51,8 +51,8 @@ architectures is created.
 
 *-d, --dist*=_DIST_::
 Specify the product the DUD is for. Possible values for _DIST_ include:
-`13.2`, `sle15`, `leap15.1`, `caasp1.0`, `tw` standing for
-openSUSE 13.2, SLE15, Leap 15.1, CaaSP 1.0, Tumbleweed, respectively. +
+`13.2`, `sle15`, `leap15.1`, `caasp1.0`, 'micro5.0', `tw` standing for
+openSUSE 13.2, SLE 15, Leap 15.1, CaaSP 1.0, SLE Micro 5.0, Tumbleweed, respectively. +
 *Note 1*: `sle15` is a short hand for specifying both `sles15` and `sled15`. +
 *Note 2*: There are no separate names for service packs.
 So `sles15-sp1` is the same as `sles15`. But see *--condition*
@@ -260,6 +260,14 @@ The *--dist* option accepts these values (case-insensitive; X, Y: decimal number
 - slesX (e.g. sles15) = SUSE Linux Enterprise Server X
 - sledX (e.g. sled15) = SUSE Linux Enterprise Desktop X - but see notes below
 - caaspX.Y (e.g. caasp1.0) = SUSE Container as a Service Platform X.Y - see notes below
+- microX.Y (e.g. micro5.0) = SUSE Linux Enterprise Micro X.Y
+
+As a shorthand and to avoid common mistakes, these aliases do also work (X, Y: decimal numbers):
+
+- X.Y with X >= 15 (e.g. 15.1) resolves to: +
+  SUSE Linux Enterprise (Server + Desktop) X + openSUSE Leap X.Y
+- X with X >= 15 (e.g. 15) resolves to: +
+  SUSE Linux Enterprise (Server + Desktop) X
 
 *Note 1*: there aren't any products anymore that actually use `sledX`,
 even SLED uses the `sles` DUDs meanwhile. Because of this, please just use `sleX`
@@ -278,8 +286,11 @@ Currently:
 Kubic is based on Tumbleweed. For compatibility, *--dist*=kubic... variants are still
 supported but will be mapped to Tumbleweed. Please use *--dist*=tw directly.
 
-Driver updates built for SLE12 will implicitly also work with
-CaaSP3.0; those built for SLE15 will implicitly also work with CaaSP4.0. But
+openSUSE MicroOS (not to be confused with SUSE Linux Enterprise Micro) is
+based on Tumbleweed. Use *--dist*=tw.
+
+Driver updates built for SLE 12 will implicitly also work with
+CaaSP3.0; those built for SLE 15 will implicitly also work with CaaSP4.0. But
 this is not true for CaaSP1.0 and CaaSP2.0.
 
 Normally, a DUD will apply to the main release as well as to all the service packs.
