@@ -98,9 +98,9 @@ my @all_archs = qw ( x86_64 aarch64 armv7l i386 ia64 ppc ppc64 ppc64le s390 s390
 my $REPLACEABLE_YAST = '3.1.135';
 
 # valid kernel module extensions
-my $kext_regexp = '\.ko(?:\.xz)?';
-my $kext_glob = '.ko{,.xz}';
-my @kext_list = qw ( .ko .ko.xz );
+my $kext_regexp = '\.ko(?:\.xz|\.gz|\.zst)?';
+my $kext_glob = '.ko{,.xz,.gz,.zst}';
+my @kext_list = qw ( .ko .ko.xz .ko.gz .ko.zst );
 
 sub usage;
 sub get_file_arch;
@@ -447,8 +447,8 @@ More information is available in the mkdud(1) manual page.
 #
 # Return architecture for $file or undef if it couldn't be determined.
 #
-# $file may optionally be xz or gzip compressed (with file extensions .xz
-# resp. .gz).
+# $file may optionally be xz, gzip, or zstd compressed (with file extensions
+# .xz, .gz, or .zst, respectively)
 #
 sub get_file_arch
 {
@@ -471,9 +471,10 @@ sub get_file_arch
     'elf64-x86-64' => 'x86_64',
   };
 
-  if($file =~ /\.(gz|xz)$/) {
+  if($file =~ /\.(gz|xz|zst)$/) {
     my $compr = 'gzip -dc';
     $compr = 'xz -dc' if $1 eq 'xz';
+    $compr = 'zstd -dc' if $1 eq 'zst';
     my $tmp_file = $tmp->file();
     system "$compr $file > $tmp_file";
     $file = $tmp_file;
