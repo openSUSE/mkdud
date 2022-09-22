@@ -171,6 +171,7 @@ my $sign_key_id;
 my $obs;
 my $pubkey_info;
 my $yast_version = 0;
+my $mkisofs = -x '/usr/bin/mkisofs' ? '/usr/bin/mkisofs' : '/usr/bin/genisoimage';
 
 # linuxrc versions in service packs
 my $servicepack;
@@ -1472,7 +1473,7 @@ sub write_dud
 
   if($format_archive eq 'iso') {
     set_mkisofs_metadata;
-    $cmd_archive = "genisoimage -l -r -pad -input-charset utf8";
+    $cmd_archive = "$mkisofs -l -r -pad -input-charset utf8";
     $cmd_archive .= " -V '" . substr($opt_volume, 0, 32) . "'";
     $cmd_archive .= " -A '" . substr($opt_application, 0, 128) . "'";
     $cmd_archive .= " -p '" . substr($opt_preparer, 0, 128) . "'";
