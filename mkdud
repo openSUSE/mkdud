@@ -421,7 +421,7 @@ General options:
 
 Verify driver update:
 
-  -s, --show DUD                Verify DUD and print short summary.
+  -s, --show DUD                Verify DUD and print summary.
 
 Create driver update:
 

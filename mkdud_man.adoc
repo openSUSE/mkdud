@@ -34,7 +34,7 @@ Show this help text.
 === Verify Driver Update
 
 *-s, --show*=_DUD_::
-Verify _DUD_ and print short summary. _DUD_ may be a file or directory or an ISO image.
+Verify _DUD_ and print a summary. _DUD_ may be a file or directory or an ISO image.
 
 
 === Create Driver Update
@@ -51,12 +51,15 @@ architectures is created.
 
 *-d, --dist*=_DIST_::
 Specify the product the DUD is for. Possible values for _DIST_ include:
-`13.2`, `sle15`, `leap15.1`, `caasp1.0`, 'micro5.0', `tw` standing for
-openSUSE 13.2, SLE 15, Leap 15.1, CaaSP 1.0, SLE Micro 5.0, Tumbleweed, respectively. +
-*Note 1*: `sle15` is a short hand for specifying both `sles15` and `sled15`. +
-*Note 2*: There are no separate names for service packs.
+`13.2`, `sle15`, `leap16.1`, `caasp1.0`, 'micro5.0', `tw` standing for
+openSUSE 13.2, SLE 15, Leap 16.1, CaaSP 1.0, SLE Micro 5.0, Tumbleweed, respectively. +
+*Note 1*: Since SLE 16 / Leap 16.0 Agama replaces YaST as installer. +
+See *Agama vs. YaST* below for more details. +
+*Note 2*: `sle15` is a short hand for specifying both `sles15` and `sled15`. +
+*Note 3*: There are no separate names for service packs.
 So `sles15-sp1` is the same as `sles15`. But see *--condition*
 below for a way to target specific service packs. +
+*Note 4*: `sle16` is used for SLE 16. There are no service packs for the SLE 16 product line. +
 See *Distribution (Product) Names* below for more details. +
 Option can be repeated to specify several distribution targets.
 
@@ -82,22 +85,39 @@ Option can be repeated to specify a multi-line name.
 *-x, --exec*=_COMMAND_::
 Run _COMMAND_ right after the driver update has been loaded.
 Option can be repeated to specify several commands. +
-*Note*: The commands are run just before kernel modules
+*Note 1*: This option only works for YaST-based installations. +
+*Note 2*: The commands are run just before kernel modules
 are updated.
 
 *-i, --install*=_METHODS_::
 Package install method. _METHODS_ is a comma-separated list
-of: `instsys`, `repo`, `rpm` (default: `instsys,repo,rpm`). +
-- `instsys`: unpack packages in installation system +
+of: `instsys`, `repo`, `rpm` (default (Agama): `instsys,repo`, default (YaST): `instsys,repo,rpm`). +
+- `instsys`: unpack packages in installation system / live root +
 - `repo`: create repo with all packages and register with
-  yast before starting installation; repo will be removed
+  Agama or YaST before starting installation; repo will be removed
   after the installation +
 - `rpm`: install packages at the end of the installation
-  using rpm (that is, not via repo & zypper) +
+  using rpm (that is, not via repo & zypper) - this method is
+  only available for YaST +
+
+*--initrd*=_RPM|DIR_::
+Add RPM or content of DIR to initrd instead of instsys. +
+Option can be repeated to add several packages or directories. +
+This requires applying the driver update with *mkmedia* to work. +
+See *How to apply driver updates* below for details.
+
+*--installer*=_INSTALLER_::
+Set installation program. Either agama or yast (default: auto-detected based on dist). +
+It is usually not necessary to use this option. There are minor differences in handling driver updates
+between Agama and YaST, though. mkdud takes these into account.
 
 *--config*=_KEY_=_VALUE_::
-Set linuxrc config option _KEY_ to _VALUE_. The options are changed
+Set initrd config option _KEY_ to _VALUE_. The options are changed
 just after the driver update has been loaded. +
+You can set boot options using KEY 'boot'.
+Setting boot options accepts the same semantics as *mkmedia* (see *mkmedia* docs); in particular, prefixing a
+boot option with '-' removes it. +
+See *How to apply driver updates* below for limitations. +
 Option can be repeated to set several options.
 
 *--no-docs*::
@@ -130,7 +150,9 @@ See *Consistency checks*.
 *--format*=_FORMAT_::
 Specify archive format for DUD. _FORMAT_=`((cpio|tar|iso)[.(gz|xz)])|rpm`. +
 Default _FORMAT_ is `cpio.gz` (gzip compressed cpio archive). +
-*Note*: please check `README` before changing the default.
+Using _FORMAT_ 'iso' produces an ISO image with label 'OEMDRV' -
+see *How to apply driver updates* below for more information. +
+*Note*: please check `README.md` before changing the default.
 
 *--prefix*=_NUM_::
 First directory prefix of driver update. +
@@ -248,6 +270,7 @@ keys for each RPM in _SOURCES_ from the build service using the `osc` tool. Note
 you must configure the build service access via `$HOME/.oscrc` for this to work.
 --
 
+
 == Distribution (Product) Names:
 
 The *--dist* option accepts these values (case-insensitive; X, Y: decimal numbers):
@@ -259,6 +282,7 @@ The *--dist* option accepts these values (case-insensitive; X, Y: decimal number
 - sleX (e.g. sle15) = SUSE Linux Enterprise (Server + Desktop) X
 - slesX (e.g. sles15) = SUSE Linux Enterprise Server X
 - sledX (e.g. sled15) = SUSE Linux Enterprise Desktop X - but see notes below
+- sle16, sles16 = SUSE Linux Enterprise 16
 - caaspX.Y (e.g. caasp1.0) = SUSE Container as a Service Platform X.Y - see notes below
 - microX.Y (e.g. micro5.0) = SUSE Linux Enterprise Micro X.Y
 
@@ -304,6 +328,20 @@ This works also to target a specifc Tumbleweed release:
 You can specify several *--condition* options. They must all be fulfilled (logical *and*).
 
 
+== Agama vs. YaST
+
+Starting with SLE 16 and Leap 16.0, the installer changes from YaST to Agama. With this, the installation
+system setup changes substantially and there are a few differences in driver update handling.
+
+With Agama:
+
+- dracut replaces linuxrc for initial setup steps in the initrd; this results in different boot and config options
+- the *--install=rpm* package install method is not available; all package updates intended
+for the target system are done by creating a software repository with all packages
+- there are no update.pre or update.post scripts
+- the *--exec* option is not available
+
+
 == Consistency Checks
 
 It is possible to create driver updates that will predictably not work
@@ -335,6 +373,40 @@ apply the part of a driver update that replaces files in the
 installation system. In older SUSE versions this script was not able to
 update some programs from the `coreutils` package. mkdud implicitly
 includes an update for this script if it detects a need for it.
+
+
+== How to apply driver updates
+
+There are several ways to apply driver updates:
+
+1. During installation
+
+- using boot option *inst.dud=URL_TO_DUD_FILE* (Agama) resp. *dud=URL_TO_DUD_FILE* (YaST)
+- unpack the driver update to a local file system with label *OEMDRV* (YaST)
+- rename the driver update to *driverupdate* and place it into the root of the installation repository (at the
+same level where the *repodata* directory is) (YaST)
+
+2. By preparing patched installation media
+
+- using *mkmedia --create new.iso --initrd DUD_FILE orig.iso*
+- using *mkmedia --create new.iso --apply-dud DUD_FILE orig.iso*
+
+The difference between *--apply-dud* and *--initrd* is that *--apply-dud* applies the driver update directly to the
+installation medium while *--initrd* only adds the driver update to the initrd where it will be found and applied at
+installation time (equivalent to using the *inst.dud* or *dud* boot options).
+
+Only with *--apply-dud* you can apply changes to the initrd or boot options.
+
+*mkdud --show DUD_FILE* tells you which ways are available for a specific driver update.
+
+Using *mkdud --format=iso ...* produces an ISO9660 file system with label *OEMDRV* - ready to be used in the OEMDRV method
+described above (no unpacking needed).
+
+*Note*: If you have package updates for the live root file system (using *--install=instsys*) the updated packages
+are added to the installation system / live root - but rpm scripts are not run and the live root rpm database is not updated.
+
+*Hint*: If it simplifies your workflow, combine several driver updates into a single update; e.g.: +
+*mkdud --create foo_all.dud foo1.dud foo2.dud foo3.dud ...*
 
 
 == Examples
@@ -377,4 +449,5 @@ Find more usage examples here: https://github.com/openSUSE/mkdud/blob/master/HOW
 - more documentation: `/usr/share/doc/packages/mkdud` +
 - mkdud web site: https://github.com/openSUSE/mkdud +
 - Update Media HOWTO: http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/index.html
+- mkmedia / mksusecd web site: https://github.com/openSUSE/mksusecd
 - openSUSE Build Service: https://build.opensuse.org
