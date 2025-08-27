@@ -244,6 +244,8 @@ usage 1 unless $opt_show xor $opt_create;
 
 usage 2 if $opt_show && @ARGV;
 
+$ENV{PATH} = "/usr/bin:/bin:/usr/sbin:/sbin";
+
 @opt_arch = map { /^i.86$/ ? "i386" : $_ } @opt_arch;
 
 if(open my $f, "$ENV{HOME}/.mkdudrc") {
