@@ -11,32 +11,51 @@ A driver update can be either an archive file or a directory (the unpacked archi
 
 ## Use driver updates
 
-1. Use the `dud` boot option to pass a URL pointing to the driver update. For example:
+1. Use the `inst.dud` (Agama) or `dud` (YaST) boot option to pass a URL pointing to the driver update. For example:
 
-    - `dud=https://example.com/foo.dud`
+    - `inst.dud=https://example.com/foo.dud`
     - `dud=disk:/foo.dud`
 
 2. Driver updates in special places are loaded automatically:
 
-    - a file named `driverupdate` in the root directory of the installation medium
-    - a partition (e.g. on a USB stick) with file system label `OEMDRV` containing an unpacked driver update
+    - a file named `driverupdate` in the root directory of the installation medium (YaST only)
+    - a partition (e.g. on a USB stick) with file system label `OEMDRV` containing an unpacked driver update (YaST only)
     - an unpacked driver update in the initrd of the installation medium
 
+3. Apply the driver update directly to the installation medium
+
+For supported URL schemas look at
+
+- https://agama-project.github.io/docs/user/reference/boot_options (Agama)
+- https://en.opensuse.org/SDB:Linuxrc (YaST)
+
 Putting the driver update into the initrd provides a way to seamlessly integrate driver updates into otherwise
-unchanged SUSE installation media. The `mksusecd` command has a dedicated `--initrd` option to make this easy:
+unchanged SUSE installation media. The `mkmedia` command has a dedicated `--initrd` option to make this easy:
 
 ```sh
-mksusecd --create new.iso --initrd foo.dud old.iso
+mkmedia --create new.iso --initrd foo.dud old.iso
 ```
 
+To make changes that are otherwise technically not possible - like modifying the initrd or changing boot options you
+have to use the `--apply-dud` option of `mkmedia` to modify the installation medium directly:
+
+```sh
+mkmedia --create new.iso --apply-dud foo.dud old.iso
+```
+
+The difference between `--initrd` and `--apply-dud` is that the first makes the DUD available during installation
+(without any user-interaction) while the second interpretes the DUD and applies the changes it describes to the
+installation medium.
+
+`mkmedia` is part of the [mksusecd](https://github.com/openSUSE/mksusecd) package.
 
 ## Create driver updates
 
-To create driver updates use `mkdud`. You have to specify at least the product the driver update in intended for but it's
+To create driver updates use `mkdud`. You have to specify at least the product the driver update is intended for but it's
 also nice to give it a descriptive name:
 
 ```sh
-mkdud --create foo.dud --dist leap15.0 --name "Support the new bar" bar.ko
+mkdud --create foo.dud --dist leap15.6 --name "Support the new bar" bar.ko
 ```
 
 Driver updates have to be properly signed to be accepted by the installer. If they are not the user will
@@ -138,7 +157,7 @@ mkdud --create foo.dud --dist xxx --install instsys foo.rpm
 ```
 
 
-## Adjust installation workflow
+## Adjust installation workflow (YaST only)
 
 Driver updates also prove hooks into the installation workflow. This is done by triggering shell scripts at specific points. They are
 
@@ -156,7 +175,7 @@ mkdud --create foo.dud --dist xxx update.post2
 to enable the `foo` service.
 
 
-## Execute commands
+## Execute commands (YaST only)
 
 Sometimes the commands in `update.pre` are run too late for your purpose. It is possible to run commands immediately (when the driver update has
 been loaded). For this, the `exec` config option can be used. For example
@@ -180,8 +199,141 @@ single driver update:
 mkdud --create all.dud foo.dud bar.dud zap.dud
 ```
 
+## Examples
 
-## Troubleshooting
+Let's look at a few basic examples.
+
+### Example 1
+
+```
+# mkdud --create foo.dud --dist sle16 --name "Test update" \
+  hello.rpm e1000.ko.xz
+===  Update #1  ===
+  [SUSE Linux Enterprise 16 (x86_64)]
+    Name:
+      Test update
+    ID:
+      3c39839e-bf42-49ee-a405-6f97c0732a9f
+    Installer:
+      Agama
+    Packages:
+      - install methods: instsys, repo
+      hello-2.12.2-1.5.x86_64.rpm  (Mon May 19 19:43:32 2025)
+    Modules:
+      e1000.ko.xz (6.12.0-160000.18-default.x86_64)
+    Installation System:
+      - package: hello-2.12.2-1.5.x86_64.rpm
+      /usr/bin/hello
+    How to apply this DUD:
+      [✔] during installation: using boot option inst.dud=URL_TO_DUD_FILE
+      [✘] during installation: unpacked on local file system with label 'OEMDRV'
+      [✘] during installation: renamed as 'driverupdate' in installation repository
+      [✔] rebuilding installation media using 'mkmedia --initrd DUD_FILE ...'
+      [✔] rebuilding installation media using 'mkmedia --apply-dud DUD_FILE ...'
+```
+
+This DUD
+
+- is intended for Agama (SLE 16)
+- updates the `hello` package in the installed (target) system
+- adds the `hello` package to the installation system
+- updates the `e1000` kernel module
+
+Note that in Agama-based installations the 'OEMDRV' and 'driverupdate' methods are not available.
+
+### Example 2
+
+```
+# mkdud --create foo.dud --dist tw --name "Test update" \
+  hello.rpm e1000.ko.xz \
+  --config password=xxx
+===  Update #1  ===
+  [openSUSE Tumbleweed (x86_64)]
+    Name:
+      Test update
+    ID:
+      2deb1bab-d22d-4f93-9574-77905456eaf8
+    Installer:
+      YaST
+    Packages:
+      - install methods: instsys, repo, rpm (repo priority 50)
+      hello-2.12.2-1.5.x86_64.rpm  (Mon May 19 19:43:32 2025)
+    Modules:
+      e1000.ko.xz (6.12.0-160000.18-default.x86_64)
+    Scripts:
+      update.pre, update.post2
+    Installation System:
+      - package: hello-2.12.2-1.5.x86_64.rpm
+      /usr/bin/hello
+    Config Entries:
+      password = xxx
+    How to apply this DUD:
+      [✔] during installation: using boot option dud=URL_TO_DUD_FILE
+      [✔] during installation: unpacked on local file system with label 'OEMDRV'
+      [✔] during installation: renamed as 'driverupdate' in installation repository
+      [✔] rebuilding installation media using 'mkmedia --initrd DUD_FILE ...'
+      [✔] rebuilding installation media using 'mkmedia --apply-dud DUD_FILE ...'
+```
+
+This DUD
+
+- is intended for YaST (Tumbleweed)
+- updates the `hello` package in the installed (target) system
+- adds the `hello` package to the installation system
+- updates the `e1000` kernel module
+- sets the root password used in the installation system (e.g. for ssh access)
+
+Since in YaST-based installations config setting are possible, the DUD can be applied by any method.
+
+Note that `mkdud` automatically generates `update.pre` and `update.post2` scripts that handle adding and removing a
+driver update software repository (needed for 'repo' install method) during installation.
+
+### Example 3
+
+```
+# mkdud --create foo.dud --dist leap16.0 --name "Test update" \
+  --initrd hello.rpm \
+  e1000.ko.xz \
+  --config live.password=xxx --config boot=nomodeset
+===  Update #1  ===
+  [openSUSE Leap 16.0 (x86_64)]
+    Name:
+      Test update
+    ID:
+      45f627da-b7c4-48ed-94c1-31e25ed92442
+    Installer:
+      YaST
+    Modules:
+      e1000.ko.xz (6.12.0-160000.18-default.x86_64)
+    Initrd:
+      - package: hello-2.12.2-1.5.x86_64.rpm
+      /usr/bin/hello
+    Config Entries:
+      live.password = xxx
+    Boot Options:
+      nomodeset
+    How to apply this DUD:
+      [✘] during installation: using boot option dud=URL_TO_DUD_FILE
+      [✘] during installation: unpacked on local file system with label 'OEMDRV'
+      [✘] during installation: renamed as 'driverupdate' in installation repository
+      [✘] rebuilding installation media using 'mkmedia --initrd DUD_FILE ...'
+      [✔] rebuilding installation media using 'mkmedia --apply-dud DUD_FILE ...'
+```
+
+This DUD
+
+- is intended for Agama (Leap 16.0)
+- adds the `hello` package to the initrd
+- updates the `e1000` kernel module
+- sets the root password used in the installation system (note the different option compared to the last example)
+- sets boot option `nomodeset`
+
+Since boot options can not be changed during an installation (it is too late), the
+DUD can only be applied by modifying the installation medium.
+
+
+
+## Troubleshooting (YaST-based installations)
 
 Sometimes things just don't work as expected. Here is a detailed guide that walks you through the entire update process
 and shows what exactly to expect.
