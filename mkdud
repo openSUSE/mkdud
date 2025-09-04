@@ -161,6 +161,7 @@ my $opt_fix_dist = 1;
 my $opt_fix_adddir = 1;
 my @opt_initrd;
 my $opt_installer;
+my @opt_iso;
 
 # global variables
 my $dud;
@@ -225,6 +226,7 @@ GetOptions(
   'application=s'    => \$opt_application,
   'installer=s'      => \$opt_installer,
   'initrd=s'         => \@opt_initrd,
+  'iso=s'            => \@opt_iso,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -300,6 +302,7 @@ import_sign_key;
 if($opt_create) {
   file_type $_ for (@ARGV);
   file_type $_, 1 for (@opt_initrd);
+  file_type $_, 2 for (@opt_iso);
 
   my $need_dist;
   for (@files) {
@@ -436,7 +439,8 @@ Create driver update:
   -x, --exec COMMAND            Run command just after the driver update has been loaded.
   -i, --install METHODS         Package install method. METHODS is a comma-separated list
                                 of: instsys, repo, rpm (default: 'instsys,repo,rpm').
-      --initrd RPM|DIR          Add RPM or DIR to initrd instead of instsys (option can be repeated).
+      --initrd RPM|DIR          Add RPM or DIR to initrd (option can be repeated).
+      --iso DIR                 Add DIR to installation ISO image (option can be repeated).
       --installer INSTALLER     Set installation program. Either agama or yast
                                 (default: auto-detected based on dist).
       --config KEY=VALUE        Set initrd config option KEY to VALUE (option can be repeated).
@@ -531,7 +535,9 @@ sub file_type
   my $gpg = "gpg --homedir=$sign_key_dir --yes --output - 2>/dev/null";
   my $gpg_sign;
 
-  my $for_initrd = $_[1];
+  my $for_instsys = $_[1] == 0;
+  my $for_initrd = $_[1] == 1;
+  my $for_iso = $_[1] == 2;
 
   if(!-e $_[0]) {
     print STDERR "$_[0]: error: no such file or directory\n";
@@ -541,7 +547,7 @@ sub file_type
   $_ = `file -b -k -L $_[0] 2>/dev/null`;
 
   if(/^RPM/) {
-    my $ft = { type => ($for_initrd ? 'rpm_initrd' : 'rpm'), file => $_[0] };
+    my $ft = { type => ($for_initrd ? 'rpm_initrd' : $for_iso ? 'rpm_iso' : 'rpm'), file => $_[0] };
 
     my $f = `rpm --nosignature -qp --qf '%{NAME}\t%{VERSION}\t%{RELEASE}.%{ARCH}' $_[0] 2>$tmp_err`;
     if($f eq "") {
@@ -558,7 +564,7 @@ sub file_type
 
     $ft->{alternatives} = $links if $links;
 
-    if(!$for_initrd) {
+    if($for_instsys) {
       # check if rpm contains a driver update
       # (a directory /linux/suse/foo-bar or /<NUMBER>/linux/suse/foo-bar exists)
       for my $line (`rpm --nosignature -qp -lv $_[0] 2>$tmp_err`) {
@@ -604,7 +610,7 @@ sub file_type
       return;
     }
   }
-  elsif(!$for_initrd && $_[0] =~ m#${kext_regexp}$#) {
+  elsif($for_instsys && $_[0] =~ m#${kext_regexp}$#) {
     my $ft = { file => $_[0] };
 
     my $ar = get_file_arch $_[0];
@@ -621,7 +627,7 @@ sub file_type
 
     return;
   }
-  elsif(!$for_initrd && /^ELF/) {
+  elsif($for_instsys && /^ELF/) {
     @i = split /\s*,\s*/;
 
     my $ft = { file => $_[0] };
@@ -640,17 +646,17 @@ sub file_type
 
     return;
   }
-  elsif(!$for_initrd && / (cpio|tar) archive/) {
+  elsif($for_instsys && / (cpio|tar) archive/) {
     $dud = $1;
   }
-  elsif(!$for_initrd && /^(gzip|XZ) compressed data/) {
+  elsif($for_instsys && /^(gzip|XZ) compressed data/) {
     my $cmd = "\L$1";
     my $f = $cmd ne 'gzip' ? $cmd : 'gz';
     my $z = `$cmd -dc $_[0] | file -b -`;
     $dud = "$1.$f" if $z =~ / (cpio|tar) archive/;
     $dud = "iso.$f" if $z =~ / ISO 9660 CD-ROM /;
   }
-  elsif(!$for_initrd && / ISO 9660 CD-ROM /) {
+  elsif($for_instsys && / ISO 9660 CD-ROM /) {
     if(!$>) {
       system "mount -oro,loop $_[0] $tmp_mnt";
       file_type "$tmp_mnt", 1;
@@ -662,7 +668,7 @@ sub file_type
     $dud = 'dummy';
   }
   elsif(-d $_[0]) {
-    if(!$for_initrd) {
+    if($for_instsys) {
       if($_[0] =~ /(^|\/)y2update\/*$/) {
         push @files, { type => 'y2update', file => $_[0] };
 
@@ -683,7 +689,7 @@ sub file_type
     }
 
     if(!$dud) {
-      my $ft = { type => ($for_initrd ? 'initrd' : 'instsys'), file => $_[0] };
+      my $ft = { type => ($for_initrd ? 'initrd' : $for_iso ? 'iso' : 'instsys'), file => $_[0] };
 
       File::Find::find(sub {
         if(-f $_) {
@@ -701,17 +707,17 @@ sub file_type
       return;
     }
   }
-  elsif(!$for_initrd && -f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.(order|config))$#) {
+  elsif($for_instsys && -f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.(order|config))$#) {
     push @files, { type => $2, file => $_[0] };
 
     return;
   }
-  elsif(!$for_initrd && -f $_[0] && $_[0] =~ m#(^|/)(.*\.(ycp|ybc|rb))$#) {
+  elsif($for_instsys && -f $_[0] && $_[0] =~ m#(^|/)(.*\.(ycp|ybc|rb))$#) {
     push @files, { type => $3, file => $_[0] };
 
     return;
   }
-  elsif(!$for_initrd && -f $_[0] && -s _ && -T _) {
+  elsif($for_instsys && -f $_[0] && -s _ && -T _) {
     open my $f, $_[0];
     local $/;	# complete file
     my $l = <$f>;
@@ -729,7 +735,7 @@ sub file_type
       return;
     }
   }
-  elsif(!$for_initrd) {
+  elsif($for_instsys) {
     for (`gpg --homedir=$sign_key_dir --verify $_[0] 2>&1`) {
       chomp;
       $gpg_sign = $1, last if /^gpg: Signature made\s*(.*)$/;
@@ -967,13 +973,25 @@ sub new_dud
       if($_->{type} eq 'instsys') {
         $dud_ok = 1;
         mkdir "$base/inst-sys", 0755;
+        open my $f, ">>", "$base/inst-sys/.update.$id";
+        close $f;
         system "cp -a '$_->{file}'/* $base/inst-sys";
       }
 
       if($_->{type} eq 'initrd') {
         $dud_ok = 1;
         mkdir "$base/initrd", 0755;
+        open my $f, ">>", "$base/initrd/.update.initrd.$id";
+        close $f;
         system "cp -a '$_->{file}'/* $base/initrd";
+      }
+
+      if($_->{type} eq 'iso') {
+        $dud_ok = 1;
+        mkdir "$base/iso", 0755;
+        open my $f, ">>", "$base/iso/.update.iso.$id";
+        close $f;
+        system "cp -a '$_->{file}'/* $base/iso";
       }
 
       if($_->{type} eq 'rpm') {
@@ -1013,6 +1031,16 @@ sub new_dud
 
         # link directly, not going via /etc/alternatives
         apply_alternatives "$base/initrd", $_->{alternatives}, 1;
+      }
+
+      # FIXME: this is unlikely to be useful...
+      if($_->{type} eq 'rpm_iso') {
+        $dud_ok = 1;
+        mkdir "$base/iso", 0755;
+        open my $f, ">>", "$base/iso/.update.iso.$id";
+        print $f "package: $_->{canonical_name}\n";
+        close $f;
+        system "rpm2cpio $_->{file} | ( cd $base/iso ; cpio --quiet --sparse -dimu --no-absolute-filenames )";
       }
 
       if($_->{type} eq 'bin' || $_->{type} eq 'lib') {
@@ -2087,6 +2115,33 @@ sub show_single_dir
   }
 
   # ----------------------------
+  # iso
+
+  if(-d "$dir/iso") {
+    my $max_files = 10;
+
+    chomp(my @f = `cd $dir/iso; find . -type f`);
+    @f = map { s#^\.##; $_ } sort @f;
+    @f = grep { $_ ne "/.update.iso.$id" } @f;
+
+    if(open my $fd, "$dir/iso/.update.iso.$id") {
+      my @l = <$fd>;
+      close $fd;
+      chomp @l;
+      $sect{iso} .= "      - $_.rpm\n" for @l;
+    }
+
+    if(@f > $max_files + 1) {
+      $sect{iso} .= "      $_\n" for (@f[0 .. $max_files - 1]);
+      my $x = @f - $max_files;
+      $sect{iso} .= "      ... ($x more files)\n";
+    }
+    else {
+      $sect{iso} .= "      $_\n" for (@f);
+    }
+  }
+
+  # ----------------------------
   # public rpm keys
 
   for (glob("$dir/inst-sys/usr/lib/rpm/gnupg/keys/* $dir/initrd/usr/lib/rpm/gnupg/keys/*")) {
@@ -2112,8 +2167,8 @@ sub show_single_dir
 
   my @is_ok = ( "✔", "✔", "✔", "✔", "✔" );
 
-  $is_ok[0] = $is_ok[3] = "✘" if $sect{initrd} || $sect{boot} || ($sect{config} && $installer ne "yast");
-  $is_ok[1] = $is_ok[2] = "✘" if $sect{initrd} || $sect{boot} || $installer ne "yast";
+  $is_ok[0] = $is_ok[3] = "✘" if $sect{iso} || $sect{initrd} || $sect{boot} || ($sect{config} && $installer ne "yast");
+  $is_ok[1] = $is_ok[2] = "✘" if $sect{iso} || $sect{initrd} || $sect{boot} || $installer ne "yast";
 
   my $opt = "dud";
   $opt = "inst.dud" if $installer eq "agama";
@@ -2171,6 +2226,10 @@ sub show_single_dir
 
   if($sect{initrd}) {
     $log .= "    Initrd:\n$sect{initrd}";
+  }
+
+  if($sect{iso}) {
+    $log .= "    ISO:\n$sect{iso}";
   }
 
   if($sect{other}) {
