@@ -101,8 +101,15 @@ of: `instsys`, `repo`, `rpm` (default (Agama): `instsys,repo`, default (YaST): `
   only available for YaST +
 
 *--initrd*=_RPM|DIR_::
-Add RPM or content of DIR to initrd instead of instsys. +
+Add RPM or content of DIR to initrd. +
 Option can be repeated to add several packages or directories. +
+This requires applying the driver update with *mkmedia* to work. +
+See *How to apply driver updates* below for details.
+
+*--iso*=_DIR_::
+Add content of DIR to installation ISO image. +
+Option can be repeated to add several directories. +
+Use this option to update for example shim or grub on the installation medium. +
 This requires applying the driver update with *mkmedia* to work. +
 See *How to apply driver updates* below for details.
 
@@ -395,7 +402,7 @@ The difference between *--apply-dud* and *--initrd* is that *--apply-dud* applie
 installation medium while *--initrd* only adds the driver update to the initrd where it will be found and applied at
 installation time (equivalent to using the *inst.dud* or *dud* boot options).
 
-Only with *--apply-dud* you can apply changes to the initrd or boot options.
+Only with *--apply-dud* you can apply changes to the initrd, boot options, or the installation ISO.
 
 *mkdud --show DUD_FILE* tells you which ways are available for a specific driver update.
 
