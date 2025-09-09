@@ -175,16 +175,31 @@ mkdud --create foo.dud --dist xxx update.post2
 to enable the `foo` service.
 
 
-## Execute commands (YaST only)
+## Execute commands
 
 Sometimes the commands in `update.pre` are run too late for your purpose. It is possible to run commands immediately (when the driver update has
-been loaded). For this, the `exec` config option can be used. For example
+been loaded). For this, the `exec` option can be used. For example
 
 ```sh
-mkdud --create foo.dud --dist xxx --config "exec=rmmod foo"
+mkdud --create foo.dud --dist xxx --exec="rmmod foo"
 ```
 
 would unload module `foo` immediately.
+
+Note that the moment when this command is run differs between installations using YaST and Agama.
+
+For YaST, the command is run just before any kernel module changes would be handled.
+
+For Agama, the command is run at the end of the pre-pivot dracut hook - after Agama has handled the driver update.
+
+Agama-based installations use dracut in the initrd. mkdud offers a `--dracut-hook` option to conveniently run code
+at specifc dracut hooks. For example:
+
+```sh
+mkdud --create foo.dud --dist sle16 --dracut-hook cmdline:"echo Hello!"
+```
+
+Would insert a script in dracut hook `cmdline` that runs "echo Hello!".
 
 
 ## Combine driver updates
@@ -302,7 +317,7 @@ driver update software repository (needed for 'repo' install method) during inst
     ID:
       45f627da-b7c4-48ed-94c1-31e25ed92442
     Installer:
-      YaST
+      Agama
     Modules:
       e1000.ko.xz (6.12.0-160000.18-default.x86_64)
     Initrd:
@@ -328,9 +343,43 @@ This DUD
 - sets the root password used in the installation system (note the different option compared to the last example)
 - sets boot option `nomodeset`
 
-Since boot options can not be changed during an installation (it is too late), the
-DUD can only be applied by modifying the installation medium.
+Since boot options cannot be changed during an installation the
+DUD can only be applied by modifying the installation medium using mkmedia.
 
+### Example 4
+
+```
+# mkdir -p /tmp/foo/EFI/BOOT
+# cp /usr/share/efi/x86_64/shim.efi /tmp/foo/EFI/BOOT/bootx64.efi
+# cp /usr/share/grub2/x86_64-efi/grub.efi /tmp/foo/EFI/BOOT/grub.efi
+# mkdud --create foo.dud --dist leap16.0 --name "Test update" \
+  --iso /tmp/foo
+===  Update #1  ===
+  [openSUSE Leap 16.0]
+    Name:
+      Test update
+    ID:
+      15aad607-f8e6-46d2-9667-7434ef3660ae
+    Installer:
+      Agama
+    ISO:
+      /EFI/BOOT/bootx64.efi
+      /EFI/BOOT/grub.efi
+    How to apply this DUD:
+      [✘] during installation: using boot option dud=URL_TO_DUD_FILE
+      [✘] during installation: unpacked on local file system with label 'OEMDRV'
+      [✘] during installation: renamed as 'driverupdate' in installation repository
+      [✘] rebuilding installation media using 'mkmedia --initrd DUD_FILE ...'
+      [✔] rebuilding installation media using 'mkmedia --apply-dud DUD_FILE ...'
+```
+
+This DUD
+
+- is intended for Agama (Leap 16.0)
+- updates shim and grub on the installation medium (taking binaries from the currently installed packages)
+
+Since the cfhanges are intended for the installation ISO itself the
+DUD can only be applied by modifying the installation medium using mkmedia.
 
 
 ## Troubleshooting (YaST-based installations)

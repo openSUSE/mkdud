@@ -35,16 +35,43 @@ Driver updates (DUDs) are used to apply fixes to the installation process. In pa
 - update kernel modules
 - change files in the initrd of the installation medium
 - change files in the installation system / live root of the installation medium
+- change files on the installation medium
 - change boot options
 - change installer config options
 - provide updated packages to be installed
 - add scripts to be run before and after the installer runs
 
-The format of DUDs is described in the [Update Media Howto](http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/Update-Media-HOWTO.html).
+mkdud provides an easy way to create these DUDs. See [Driver updates and you](HOWTO.md) for detailed instructions and usage examples.
 
-`mkdud` provides an easy way to create these DUDs.
+The file format of DUDs is described in the [Update Media Howto](http://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/Update-Media-HOWTO.html).
 
-See [HOWTO](HOWTO.md) for detailed instructions.
+mkdud and [mkmedia](https://github.com/openSUSE/mksusecd?tab=readme-ov-file#mkmedia) support an extension of this format that allows expressing changes intended for the initrd used
+during installation and the installation medium itself. For this, two new sub directories `initrd` and `iso` are added to the
+driver update [directory structure](https://ftp.suse.com/pub/people/hvogel/Update-Media-HOWTO/Update-Media-HOWTO.html#id_dud1).
+
+With this extension, the internal driver update layout looks like this:
+
+```
+linux/
+└── suse/
+    └── x86_64-sle16/
+        ├── dud.config
+        ├── initrd/
+        │   └── foo1
+        ├── inst-sys/
+        │   └── foo2
+        ├── install/
+        │   ├── update.pre	# only for YaST
+        │   ├── update.post	# only for YaST
+        │   ├── update.post2	# only for YaST
+        │   └── foo3.rpm
+        ├── iso/
+        │   └── foo4
+        └── modules/
+            ├── module.order
+            ├── module1.ko.zst
+            └── module2.ko.zst
+```
 
 ### DUD formats
 
