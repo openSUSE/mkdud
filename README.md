@@ -35,6 +35,7 @@ Driver updates (DUDs) are used to apply fixes to the installation process. In pa
 - update kernel modules
 - change files in the initrd of the installation medium
 - change files in the installation system / live root of the installation medium
+- change files on the installation medium
 - change boot options
 - change installer config options
 - provide updated packages to be installed
