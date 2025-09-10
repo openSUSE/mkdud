@@ -2284,6 +2284,8 @@ sub show_single_dir
   $is_ok[0] = $is_ok[3] = "✘" if $sect{iso} || $sect{initrd} || $sect{boot} || ($sect{config} && $installer ne "yast");
   $is_ok[1] = $is_ok[2] = "✘" if $sect{iso} || $sect{initrd} || $sect{boot} || $installer ne "yast";
 
+  $is_ok[0] = $is_ok[1] = $is_ok[2] = $is_ok[3] = "✘" if $installer eq "anaconda";
+
   my $opt = "dud";
   $opt = "inst.dud" if $installer eq "agama";
 
