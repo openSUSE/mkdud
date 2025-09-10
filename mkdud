@@ -139,6 +139,7 @@ my @opt_arch;
 my $opt_prio = 50;
 my @opt_name;
 my @opt_exec;
+my @opt_hook;
 my $opt_no_docs = 1;
 my $opt_save_temp;
 my %opt_install;
@@ -159,8 +160,10 @@ my $opt_fix_yast = 1;
 my $opt_fix_usr_src = 1;
 my $opt_fix_dist = 1;
 my $opt_fix_adddir = 1;
+my $opt_check_hooks = 1;
 my @opt_initrd;
 my $opt_installer;
+my @opt_iso;
 
 # global variables
 my $dud;
@@ -179,6 +182,7 @@ my $obs;
 my $pubkey_info;
 my $yast_version = 0;
 my $mkisofs = -x '/usr/bin/mkisofs' ? '/usr/bin/mkisofs' : '/usr/bin/genisoimage';
+my $hooks;
 
 # linuxrc versions in service packs
 my $servicepack;
@@ -193,6 +197,12 @@ $servicepack->{11}{2} = "3.3.81";
 $servicepack->{11}{3} = "3.3.91";
 $servicepack->{11}{4} = "3.3.108";
 
+my %dracut_hooks;
+@dracut_hooks{qw (
+  cleanup cmdline emergency mount netroot pre-mount pre-pivot pre-shutdown pre-trigger pre-udev shutdown shutdown-emergency
+  initqueue/finished initqueue/online initqueue/settled initqueue/timeout
+)} = ( 1 .. 100 );
+
 GetOptions(
   'create|c=s'       => sub { $opt_create = 1; $dud = $_[1] },
   'show|s=s'         => sub { $opt_show = 1; $dud = $_[1] },
@@ -202,6 +212,7 @@ GetOptions(
   'prio|p=i'         => \$opt_prio,
   'name|n=s'         => \@opt_name,
   'exec|x=s'         => \@opt_exec,
+  'dracut-hook|hook=s' => \@opt_hook,
   'config=s'         => \@opt_config,
   'condition=s'      => \@opt_condition,
   'may-replace-yast' => sub { $opt_fix_yast = 0 },
@@ -212,11 +223,12 @@ GetOptions(
   'sign-key=s'       => \$opt_sign_key,
   'sign-key-id=s'    => \$opt_sign_key_id,
   'obs-keys'         => \$opt_obs_keys,
-  'force'            => sub { $opt_fix_yast = $opt_fix_usr_src = $opt_fix_dist = $opt_fix_adddir = 0 },
+  'force'            => sub { $opt_fix_yast = $opt_fix_usr_src = $opt_fix_dist = $opt_fix_adddir = $opt_check_hooks = 0 },
   'fix-yast!'        => \$opt_fix_yast,
   'fix-usr-src!'     => \$opt_fix_usr_src,
   'fix-dist!'        => \$opt_fix_dist,
   'fix-adddir!'      => \$opt_fix_adddir,
+  'check-hooks!'     => \$opt_check_hooks,
   'format=s'         => \$opt_format,
   'prefix=i'         => \$opt_dud_prefix,
   'volume=s'         => \$opt_volume,
@@ -225,6 +237,7 @@ GetOptions(
   'application=s'    => \$opt_application,
   'installer=s'      => \$opt_installer,
   'initrd=s'         => \@opt_initrd,
+  'iso=s'            => \@opt_iso,
   'save-temp'        => \$opt_save_temp,
   'version'          => sub { print "$VERSION\n"; exit 0 },
   'help'             => sub { usage 0 },
@@ -300,13 +313,14 @@ import_sign_key;
 if($opt_create) {
   file_type $_ for (@ARGV);
   file_type $_, 1 for (@opt_initrd);
+  file_type $_, 2 for (@opt_iso);
 
   my $need_dist;
   for (@files) {
     $need_dist = 1, last if $_->{type} ne "dud";
   }
 
-  $need_dist ||= @opt_config || @opt_exec || @opt_name;
+  $need_dist ||= @opt_config || @opt_exec || @opt_hook || @opt_name || @opt_initrd || @opt_iso;
 
   if($need_dist) {
     die "Error: distribution arg is required; use --dist.\n" if !@opt_dist;
@@ -342,7 +356,7 @@ if($opt_create) {
     }
 
     for (@dists) {
-      if(!/^((leap|kubic|casp|caasp|suse-microos)?\d+\.\d+|tw|sle[sd]\d+|sle1[6-9])$/) {
+      if(!/^((leap|kubic|casp|caasp|suse-microos)?\d+\.\d+|tw|sle[sd]\d+|sle1[6-9]|((fedora|rhel|sll)\d+))$/) {
         if(!$opt_fix_dist) {
           print STDERR "***  Note: using unsupported dist \"$_\"\n";
         }
@@ -434,9 +448,11 @@ Create driver update:
   -p, --prio NUM                Set repository priority to NUM (default: 50).
   -n, --name NAME               Set driver update name.
   -x, --exec COMMAND            Run command just after the driver update has been loaded.
+      --dracut-hook HOOK:CMD    Insert CMD into dracut hook HOOK. See man page for details.
   -i, --install METHODS         Package install method. METHODS is a comma-separated list
                                 of: instsys, repo, rpm (default: 'instsys,repo,rpm').
-      --initrd RPM|DIR          Add RPM or DIR to initrd instead of instsys (option can be repeated).
+      --initrd RPM|DIR          Add RPM or DIR to initrd (option can be repeated).
+      --iso DIR                 Add DIR to installation ISO image (option can be repeated).
       --installer INSTALLER     Set installation program. Either agama or yast
                                 (default: auto-detected based on dist).
       --config KEY=VALUE        Set initrd config option KEY to VALUE (option can be repeated).
@@ -447,6 +463,7 @@ Create driver update:
       --no-fix-dist             Allow to specify an arbitrary distribution name with --dist.
       --no-fix-usr-src          Allow driver update to include /usr/src/packages.
       --no-fix-adddir           Do not include an updated adddir script.
+      --no-check-hooks          Do not restrict dracut hook names.
       --format FORMAT           Specify archive format for DUD (default: cpio.gz).
                                 FORMAT=((cpio|tar|iso)[.(gz|xz)])|rpm.
       --prefix NUM              First directory prefix of driver update.
@@ -531,7 +548,9 @@ sub file_type
   my $gpg = "gpg --homedir=$sign_key_dir --yes --output - 2>/dev/null";
   my $gpg_sign;
 
-  my $for_initrd = $_[1];
+  my $for_instsys = $_[1] == 0;
+  my $for_initrd = $_[1] == 1;
+  my $for_iso = $_[1] == 2;
 
   if(!-e $_[0]) {
     print STDERR "$_[0]: error: no such file or directory\n";
@@ -541,7 +560,7 @@ sub file_type
   $_ = `file -b -k -L $_[0] 2>/dev/null`;
 
   if(/^RPM/) {
-    my $ft = { type => ($for_initrd ? 'rpm_initrd' : 'rpm'), file => $_[0] };
+    my $ft = { type => ($for_initrd ? 'rpm_initrd' : $for_iso ? 'rpm_iso' : 'rpm'), file => $_[0] };
 
     my $f = `rpm --nosignature -qp --qf '%{NAME}\t%{VERSION}\t%{RELEASE}.%{ARCH}' $_[0] 2>$tmp_err`;
     if($f eq "") {
@@ -558,7 +577,7 @@ sub file_type
 
     $ft->{alternatives} = $links if $links;
 
-    if(!$for_initrd) {
+    if($for_instsys) {
       # check if rpm contains a driver update
       # (a directory /linux/suse/foo-bar or /<NUMBER>/linux/suse/foo-bar exists)
       for my $line (`rpm --nosignature -qp -lv $_[0] 2>$tmp_err`) {
@@ -604,7 +623,7 @@ sub file_type
       return;
     }
   }
-  elsif(!$for_initrd && $_[0] =~ m#${kext_regexp}$#) {
+  elsif($for_instsys && $_[0] =~ m#${kext_regexp}$#) {
     my $ft = { file => $_[0] };
 
     my $ar = get_file_arch $_[0];
@@ -621,7 +640,7 @@ sub file_type
 
     return;
   }
-  elsif(!$for_initrd && /^ELF/) {
+  elsif($for_instsys && /^ELF/) {
     @i = split /\s*,\s*/;
 
     my $ft = { file => $_[0] };
@@ -640,17 +659,17 @@ sub file_type
 
     return;
   }
-  elsif(!$for_initrd && / (cpio|tar) archive/) {
+  elsif($for_instsys && / (cpio|tar) archive/) {
     $dud = $1;
   }
-  elsif(!$for_initrd && /^(gzip|XZ) compressed data/) {
+  elsif($for_instsys && /^(gzip|XZ) compressed data/) {
     my $cmd = "\L$1";
     my $f = $cmd ne 'gzip' ? $cmd : 'gz';
     my $z = `$cmd -dc $_[0] | file -b -`;
     $dud = "$1.$f" if $z =~ / (cpio|tar) archive/;
     $dud = "iso.$f" if $z =~ / ISO 9660 CD-ROM /;
   }
-  elsif(!$for_initrd && / ISO 9660 CD-ROM /) {
+  elsif($for_instsys && / ISO 9660 CD-ROM /) {
     if(!$>) {
       system "mount -oro,loop $_[0] $tmp_mnt";
       file_type "$tmp_mnt", 1;
@@ -662,7 +681,7 @@ sub file_type
     $dud = 'dummy';
   }
   elsif(-d $_[0]) {
-    if(!$for_initrd) {
+    if($for_instsys) {
       if($_[0] =~ /(^|\/)y2update\/*$/) {
         push @files, { type => 'y2update', file => $_[0] };
 
@@ -683,7 +702,7 @@ sub file_type
     }
 
     if(!$dud) {
-      my $ft = { type => ($for_initrd ? 'initrd' : 'instsys'), file => $_[0] };
+      my $ft = { type => ($for_initrd ? 'initrd' : $for_iso ? 'iso' : 'instsys'), file => $_[0] };
 
       File::Find::find(sub {
         if(-f $_) {
@@ -701,17 +720,17 @@ sub file_type
       return;
     }
   }
-  elsif(!$for_initrd && -f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.(order|config))$#) {
+  elsif($for_instsys && -f $_[0] && $_[0] =~ m#(^|/)(update\.(pre|post|post2)|module\.(order|config))$#) {
     push @files, { type => $2, file => $_[0] };
 
     return;
   }
-  elsif(!$for_initrd && -f $_[0] && $_[0] =~ m#(^|/)(.*\.(ycp|ybc|rb))$#) {
+  elsif($for_instsys && -f $_[0] && $_[0] =~ m#(^|/)(.*\.(ycp|ybc|rb))$#) {
     push @files, { type => $3, file => $_[0] };
 
     return;
   }
-  elsif(!$for_initrd && -f $_[0] && -s _ && -T _) {
+  elsif($for_instsys && -f $_[0] && -s _ && -T _) {
     open my $f, $_[0];
     local $/;	# complete file
     my $l = <$f>;
@@ -729,7 +748,7 @@ sub file_type
       return;
     }
   }
-  elsif(!$for_initrd) {
+  elsif($for_instsys) {
     for (`gpg --homedir=$sign_key_dir --verify $_[0] 2>&1`) {
       chomp;
       $gpg_sign = $1, last if /^gpg: Signature made\s*(.*)$/;
@@ -956,6 +975,87 @@ sub new_dud
     my @rpms;
     my $scripts;
 
+    if($installer ne 'yast' && @opt_exec) {
+      for my $x (@opt_exec) {
+        push @$hooks, { dir => "pre-pivot", cmd => $x, script_name => "99-zz-mkdud.sh" };
+      }
+    }
+
+    if($installer ne 'yast' && (@opt_hook || $hooks)) {
+      for my $x (@opt_hook) {
+        # pre-pivot:99-xxx.sh
+        # pre-pivot:foobar
+
+        die "invalid dracut hook spec: $x\n" if $x !~ /^([^:]+):(.+)$/;
+
+        my $hook_dir = $1;
+        my $cmd = $2;
+
+        die "invalid dracut hook: $hook_dir\n" if !$dracut_hooks{$hook_dir} && $opt_check_hooks;
+
+        my $script_name;
+        my $f;
+
+        for($f = 0; $f < @files; $f++) {
+          my $n = $files[$f]{file};
+          $n =~ s#.*/##;
+          last if $n eq $cmd;
+        }
+
+        undef $f if $f >= @files;
+
+        if($cmd =~ /^\d\d-\S+\.sh$/) {
+          die "$cmd: dracut hook script missing\n" unless defined $f;
+          $script_name = $cmd;
+          undef $cmd;
+        }
+        else {
+          undef $f;
+          $script_name = "99-zz-mkdud.sh";
+        }
+
+        my $h = { dir => $hook_dir, script_name => $script_name };
+
+        $h->{cmd} = $cmd if $cmd;
+
+        if(defined $f) {
+          $h->{file} = $files[$f];
+          splice @files, $f, 1;
+        }
+
+        push @$hooks, $h;
+      }
+
+      # print Dumper $hooks;
+
+      if($hooks) {
+        $dud_ok = 1;
+        mkdir "$base/initrd", 0755;
+        open my $f, ">>", "$base/initrd/.update.initrd.$id";
+        close $f;
+        File::Path::mkpath("$base/initrd/var/lib/dracut/hooks", { mode => 0755 });
+
+        for my $h (@$hooks) {
+          my $dir = "$base/initrd/var/lib/dracut/hooks/$h->{dir}";
+          File::Path::mkpath($dir, { mode => 0755 });
+          my $s = "$dir/$h->{script_name}";
+          if($h->{cmd}) {
+            my $sh = "#! /usr/bin/sh\n";
+            $sh = "" if -f $s;
+            open my $fd, ">>", "$dir/$h->{script_name}";
+            print $fd $sh;
+            print $fd "$h->{cmd}\n";
+            chmod 0755, $fd;
+            close $fd;
+          }
+          elsif($h->{file}) {
+            system "cp '$h->{file}{file}' '$s'";
+            chmod 0755, $s;
+          }
+        }
+      }
+    }
+
     for (@files) {
       next if $_->{arch} && $_->{arch} ne $arch;
 
@@ -967,13 +1067,25 @@ sub new_dud
       if($_->{type} eq 'instsys') {
         $dud_ok = 1;
         mkdir "$base/inst-sys", 0755;
+        open my $f, ">>", "$base/inst-sys/.update.$id";
+        close $f;
         system "cp -a '$_->{file}'/* $base/inst-sys";
       }
 
       if($_->{type} eq 'initrd') {
         $dud_ok = 1;
         mkdir "$base/initrd", 0755;
+        open my $f, ">>", "$base/initrd/.update.initrd.$id";
+        close $f;
         system "cp -a '$_->{file}'/* $base/initrd";
+      }
+
+      if($_->{type} eq 'iso') {
+        $dud_ok = 1;
+        mkdir "$base/iso", 0755;
+        open my $f, ">>", "$base/iso/.update.iso.$id";
+        close $f;
+        system "cp -a '$_->{file}'/* $base/iso";
       }
 
       if($_->{type} eq 'rpm') {
@@ -1013,6 +1125,16 @@ sub new_dud
 
         # link directly, not going via /etc/alternatives
         apply_alternatives "$base/initrd", $_->{alternatives}, 1;
+      }
+
+      # FIXME: this is unlikely to be useful...
+      if($_->{type} eq 'rpm_iso') {
+        $dud_ok = 1;
+        mkdir "$base/iso", 0755;
+        open my $f, ">>", "$base/iso/.update.iso.$id";
+        print $f "package: $_->{canonical_name}\n";
+        close $f;
+        system "rpm2cpio $_->{file} | ( cd $base/iso ; cpio --quiet --sparse -dimu --no-absolute-filenames )";
       }
 
       if($_->{type} eq 'bin' || $_->{type} eq 'lib') {
@@ -1101,7 +1223,7 @@ sub new_dud
       }
     }
 
-    if($opt_fix_yast) {
+    if($installer eq "yast" && $opt_fix_yast) {
       if(lstat "$base/inst-sys/sbin/yast") {
         if(vercmp($yast_version, $REPLACEABLE_YAST) < 0 ) {
           print STDERR
@@ -1113,7 +1235,7 @@ sub new_dud
       }
     }
 
-    if($opt_fix_usr_src) {
+    if($installer eq "yast" && $opt_fix_usr_src) {
       if(-e "$base/inst-sys/usr/src/packages") {
         print STDERR
           "***  Note: prevented driver update from including /usr/src/packages.\n" .
@@ -1122,7 +1244,7 @@ sub new_dud
       }
     }
 
-    if($opt_fix_adddir) {
+    if($installer eq "yast" && $opt_fix_adddir) {
       # only for sle11, sle12, leap42.X, caasp1.X, caasp2.X, caasp3.X
       if(grep { /^(sle[sd]?1[12]|leap42\.|caasp[1-3]\.)/ } (@dists, $dist)) {
         my $danger = 0;
@@ -1141,7 +1263,7 @@ sub new_dud
 
     print $cfg "UpdateName:\tUpdate $id\n" if !$has_update_name;
 
-    if(@opt_exec) {
+    if($installer eq 'yast' && @opt_exec) {
       $dud_ok = 1;
       mkdir "$base/install", 0755;
 
@@ -1182,7 +1304,7 @@ cd $dud/install
       chmod 0755, "$base/install/mkdud.$id.sh";
     }
 
-    if(@opt_condition) {
+    if($installer eq 'yast' && @opt_condition) {
       $dud_ok = 1;
       mkdir "$base/install", 0755;
 
@@ -1251,7 +1373,7 @@ exit 0
       }
     }
 
-    if(@rpms && $opt_install{repo} && $installer =~ /^(yast)$/i) {
+    if(@rpms && $opt_install{repo} && $installer eq "yast") {
       $dud_ok = 1;
       mkdir "$base/install", 0755;
 
@@ -1578,7 +1700,7 @@ sub write_dud
     }
   }
 
-  system "cp $tmp_archive $file_name";
+  system "cp -T $tmp_archive $file_name" and die "failed to create driver update\n";
 
   return $tmp_src;
 }
@@ -1752,33 +1874,43 @@ sub nice_arch_list
 
   my %p1;
   for (@$l) {
-    if(/^(\S+)-(sle([sd]?)(\d+)|(leap|kubic|casp|caasp|suse-microos)?(\d+\.\d+)|tw)$/) {
-      if($3 eq 's') {
-        push @{$p1{"SUSE Linux Enterprise Server $4"}}, $1;
+    if(/^(\S+)-((sle([sd]?)|fedora|rhel|sll)(\d+)|(leap|kubic|casp|caasp|suse-microos)?(\d+\.\d+)|tw)$/) {
+      # print STDERR "+++ 1=$1 2=$2 3=$3 4=$4 5=$5 6=$6 7=$7 +++\n";
+      if($3 eq 'sles') {
+        push @{$p1{"SUSE Linux Enterprise Server $5"}}, $1;
       }
-      elsif($3 eq 'd') {
-        push @{$p1{"SUSE Linux Enterprise Desktop $4"}}, $1;
+      elsif($3 eq 'sled') {
+        push @{$p1{"SUSE Linux Enterprise Desktop $5"}}, $1;
       }
-      elsif($4 ne '') {
-        push @{$p1{"SUSE Linux Enterprise $4"}}, $1;
+      elsif($3 eq 'sle') {
+        push @{$p1{"SUSE Linux Enterprise $5"}}, $1;
       }
-      elsif($5 eq 'leap') {
-        push @{$p1{"openSUSE Leap $6"}}, $1;
+      elsif($6 eq 'leap') {
+        push @{$p1{"openSUSE Leap $7"}}, $1;
       }
-      elsif($5 eq 'kubic') {
-        push @{$p1{"openSUSE Kubic $6"}}, $1;
+      elsif($6 eq 'kubic') {
+        push @{$p1{"openSUSE Kubic $7"}}, $1;
       }
-      elsif($5 eq 'casp') {
-        push @{$p1{"SUSE Containers as a Service Platform $6"}}, $1;
+      elsif($6 eq 'casp') {
+        push @{$p1{"SUSE Containers as a Service Platform $7"}}, $1;
       }
-      elsif($5 eq 'caasp') {
-        push @{$p1{"SUSE Containers as a Service Platform $6"}}, $1;
+      elsif($6 eq 'caasp') {
+        push @{$p1{"SUSE Containers as a Service Platform $7"}}, $1;
       }
-      elsif($5 eq 'suse-microos') {
-        push @{$p1{"SUSE Linux Enterprise Micro $6"}}, $1;
+      elsif($6 eq 'suse-microos') {
+        push @{$p1{"SUSE Linux Enterprise Micro $7"}}, $1;
       }
       elsif($2 eq "tw") {
         push @{$p1{"openSUSE Tumbleweed"}}, $1;
+      }
+      elsif($3 eq 'fedora') {
+        push @{$p1{"Fedora $5"}}, $1;
+      }
+      elsif($3 eq 'rhel') {
+        push @{$p1{"Red Hat Enterprise Linux $5"}}, $1;
+      }
+      elsif($3 eq 'sll') {
+        push @{$p1{"SUSE Liberty Linux $5"}}, $1;
       }
       else {
         push @{$p1{"openSUSE $2"}}, $1;
@@ -1890,6 +2022,16 @@ sub show_single_dir
     }
   }
   close $f;
+
+  if(open my $fd, "$dir/initrd/var/lib/dracut/hooks/pre-pivot/99-zz-mkdud.sh") {
+    while(<$fd>) {
+      chomp;
+      next if /^#/;
+      next if /^\s*$/;
+      $sect{exec} .= "      $_\n";
+    }
+    close $fd;
+  }
 
   $sect{installer} = "      $installer_names->{$installer}\n";
 
@@ -2087,6 +2229,33 @@ sub show_single_dir
   }
 
   # ----------------------------
+  # iso
+
+  if(-d "$dir/iso") {
+    my $max_files = 10;
+
+    chomp(my @f = `cd $dir/iso; find . -type f`);
+    @f = map { s#^\.##; $_ } sort @f;
+    @f = grep { $_ ne "/.update.iso.$id" } @f;
+
+    if(open my $fd, "$dir/iso/.update.iso.$id") {
+      my @l = <$fd>;
+      close $fd;
+      chomp @l;
+      $sect{iso} .= "      - $_.rpm\n" for @l;
+    }
+
+    if(@f > $max_files + 1) {
+      $sect{iso} .= "      $_\n" for (@f[0 .. $max_files - 1]);
+      my $x = @f - $max_files;
+      $sect{iso} .= "      ... ($x more files)\n";
+    }
+    else {
+      $sect{iso} .= "      $_\n" for (@f);
+    }
+  }
+
+  # ----------------------------
   # public rpm keys
 
   for (glob("$dir/inst-sys/usr/lib/rpm/gnupg/keys/* $dir/initrd/usr/lib/rpm/gnupg/keys/*")) {
@@ -2112,8 +2281,8 @@ sub show_single_dir
 
   my @is_ok = ( "✔", "✔", "✔", "✔", "✔" );
 
-  $is_ok[0] = $is_ok[3] = "✘" if $sect{initrd} || $sect{boot} || ($sect{config} && $installer ne "yast");
-  $is_ok[1] = $is_ok[2] = "✘" if $sect{initrd} || $sect{boot} || $installer ne "yast";
+  $is_ok[0] = $is_ok[3] = "✘" if $sect{iso} || $sect{initrd} || $sect{boot} || ($sect{config} && $installer ne "yast");
+  $is_ok[1] = $is_ok[2] = "✘" if $sect{iso} || $sect{initrd} || $sect{boot} || $installer ne "yast";
 
   my $opt = "dud";
   $opt = "inst.dud" if $installer eq "agama";
@@ -2171,6 +2340,10 @@ sub show_single_dir
 
   if($sect{initrd}) {
     $log .= "    Initrd:\n$sect{initrd}";
+  }
+
+  if($sect{iso}) {
+    $log .= "    ISO:\n$sect{iso}";
   }
 
   if($sect{other}) {
@@ -2603,7 +2776,9 @@ sub installer_from_dist
 
   my $installer = "yast";
 
-  $installer = "agama" if $dist =~ /^(sle[sd]?|leap)(\d+)$/ && $2 >= 16;
+  $installer = "agama" if $dist =~ /^(sle[sd]?|leap)(\d+)/ && $2 >= 16;
+
+  $installer = "anaconda" if $dist =~ /^(fedora|rhel|sll)\d+(\.\d+)?$/;
 
   return $installer;
 }

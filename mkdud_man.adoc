@@ -83,11 +83,16 @@ versions. +
 Option can be repeated to specify a multi-line name.
 
 *-x, --exec*=_COMMAND_::
-Run _COMMAND_ right after the driver update has been loaded.
+Run _COMMAND_ right after the driver update has been loaded. +
 Option can be repeated to specify several commands. +
-*Note 1*: This option only works for YaST-based installations. +
-*Note 2*: The commands are run just before kernel modules
-are updated.
+*Note*: The commands are run just before (YaST) or after (Agama) kernel modules
+are updated. +
+
+*--dracut-hook*=_HOOK:CMD_::
+Insert CMD into dracut hook HOOK. +
+HOOK must be a valid dracut hook name. CMD is either a custom script to run or a command to run. +
+Option can be repeated. +
+See *Adding dracut hooks* below for details.
 
 *-i, --install*=_METHODS_::
 Package install method. _METHODS_ is a comma-separated list
@@ -101,8 +106,15 @@ of: `instsys`, `repo`, `rpm` (default (Agama): `instsys,repo`, default (YaST): `
   only available for YaST +
 
 *--initrd*=_RPM|DIR_::
-Add RPM or content of DIR to initrd instead of instsys. +
+Add RPM or content of DIR to initrd. +
 Option can be repeated to add several packages or directories. +
+This requires applying the driver update with *mkmedia* to work. +
+See *How to apply driver updates* below for details.
+
+*--iso*=_DIR_::
+Add content of DIR to installation ISO image. +
+Option can be repeated to add several directories. +
+Use this option to update for example shim or grub on the installation medium. +
 This requires applying the driver update with *mkmedia* to work. +
 See *How to apply driver updates* below for details.
 
@@ -146,6 +158,10 @@ See *Consistency checks*.
 *--no-fix-adddir*::
 Do not include an updated `adddir` script. +
 See *Consistency checks*.
+
+*--no-check-hooks*::
+Do not restict dracut hook names. +
+See *Adding dracut hooks*.
 
 *--format*=_FORMAT_::
 Specify archive format for DUD. _FORMAT_=`((cpio|tar|iso)[.(gz|xz)])|rpm`. +
@@ -339,8 +355,40 @@ With Agama:
 - the *--install=rpm* package install method is not available; all package updates intended
 for the target system are done by creating a software repository with all packages
 - there are no update.pre or update.post scripts
-- the *--exec* option is not available
 
+
+== Adding dracut hooks
+
+You can add dracut hooks using the *--dracut-hook HOOK:CMD* option. This can either be a
+provided custom script or a command to run - which is implicitly inserted into a suitable script.
+
+Let's see some excamples:
+
+- If *CMD* follows the naming scheme NN-NAME.sh with NN a 2-digit number and NAME some arbitrary name then
+it is assumed that this is a script to run in *HOOK*; e.g. *--dracut-hook pre-pivot:90-foobar.sh*. Note that
+you still have to provide a script with this name to the mkdud command:
++
+[source]
+----
+mkdud --create foobar.dud --dist sle16 \
+--dracut-hook pre-pivot:90-foobar.sh 90-foobar.sh
+----
+
+- Otherwise, *CMD* is assumed to be a command to run. A *script 99-zz--mkdud.sh* will be automatically created which
+runs this command and the script is added to *HOOK*; for example:
++
+[source]
+----
+mkdud --create foobar.dud --dist sle16 \
+--dracut-hook "pre-pivot:echo hello"
+----
+
+Hook names can be (or use *--no-check-hooks* to allow arbitrary names):
+
+- cleanup, cmdline, emergency, mount, netroot, pre-mount, pre-pivot, pre-shutdown, pre-trigger, pre-udev, shutdown, shutdown-emergency,
+initqueue/finished, initqueue/online, initqueue/settled, initqueue/timeout
+
+See dracut.modules(7) for documentation.
 
 == Consistency Checks
 
@@ -374,6 +422,9 @@ installation system. In older SUSE versions this script was not able to
 update some programs from the `coreutils` package. mkdud implicitly
 includes an update for this script if it detects a need for it.
 
+-  *--[no-]check-hooks* +
+mkdud will only allow dracut hook names it knows about. But dracut may evolve.
+Use this option to disable the check if necessary.
 
 == How to apply driver updates
 
@@ -395,7 +446,7 @@ The difference between *--apply-dud* and *--initrd* is that *--apply-dud* applie
 installation medium while *--initrd* only adds the driver update to the initrd where it will be found and applied at
 installation time (equivalent to using the *inst.dud* or *dud* boot options).
 
-Only with *--apply-dud* you can apply changes to the initrd or boot options.
+Only with *--apply-dud* you can apply changes to the initrd, boot options, or the installation ISO.
 
 *mkdud --show DUD_FILE* tells you which ways are available for a specific driver update.
 
@@ -445,6 +496,10 @@ Find more usage examples here: https://github.com/openSUSE/mkdud/blob/master/HOW
 
 
 == See Also
+
+*mkmedia(1)*, *dracut.modules(7)*, *dracut.cmdline(7)*.
+
+== Links
 
 - more documentation: `/usr/share/doc/packages/mkdud` +
 - mkdud web site: https://github.com/openSUSE/mkdud +
