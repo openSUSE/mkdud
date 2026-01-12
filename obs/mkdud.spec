@@ -39,7 +39,7 @@ Requires:       gpg2
 Requires:       grep
 Requires:       gzip
 Requires:       kmod
-Requires:       osc
+Recommends:     osc
 Requires:       rpm
 Requires:       rpm-build
 Requires:       tar
