@@ -94,7 +94,8 @@ $Data::Dumper::Indent = 1;
 
 our $VERSION = "0.0";
 
-my @all_archs = qw ( x86_64 aarch64 armv7l i386 ia64 ppc ppc64 ppc64le s390 s390x );
+my @all_archs_legacy = qw ( x86_64 aarch64 armv7l i386 ia64 ppc ppc64 ppc64le s390 s390x );
+my @all_archs = qw ( x86_64 aarch64 i386 ppc64 ppc64le s390x riscv64 loongarch64 );
 my $REPLACEABLE_YAST = '3.1.135';
 
 # valid kernel module extensions
@@ -114,6 +115,7 @@ sub set_mkisofs_metadata;
 sub write_dud;
 sub fix_duds;
 sub show_dud;
+sub product_string;
 sub nice_arch_list;
 sub show_single_dir;
 sub get_service_pack;
@@ -330,11 +332,10 @@ if($opt_create) {
     @dists = @opt_dist;
 
     if($opt_fix_dist) {
+      map { s/^(opensuse|sl)-// } @dists;
       map { tr/-//d } @dists;
       # kubic is part of tumbleweed
       map { s/^(tumbleweed|tw|kubic).*/tw/g } @dists;
-      # map 'micro' to 'suse-microos'
-      map { s/^micro(\d)/suse-microos$1/ } @dists;
       # map 'casp' to the new 'caasp'
       map { s/^casp(\d)/caasp$1/ } @dists;
       # CaaSP should be aligned with the respective SLES
@@ -345,20 +346,23 @@ if($opt_create) {
       push @dists, "sles12" if grep { /^caasp[123]\./ } @dists;
       push @dists, "sles15" if grep { /^caasp4\./ } @dists;
       push @dists, "13.2" if grep { $_ eq "leap42.1" } @dists;
-      @d{map { /^sle([sd]?)(\d+)/i ? $1 eq "" && $2 <= 15 ? ("sles$2", "sled$2") : "sle\L$1$2" : "\L$_" } @dists} = ();
+      @d{map { /^sle([sd]?)(\d+)(\.\d+)?/i ? $1 eq "" && $2 <= 15 ? ("sles$2", "sled$2") : "sles\L$2$3" : "\L$_" } @dists} = ();
       @dists = sort keys %d;
       @d{map { /^(\d+)\.(\d+)$/ && $1 == 15 ? ("leap$1.$2", "sles$1", "sled$1") : $_ } @dists} = ();
       @d{map { /^(\d+)$/ && $1 == 15 ? ("sles$1", "sled$1") : $_ } @dists} = ();
-      @d{map { /^(\d+)\.(\d+)$/ && $1 >= 16 ? ("leap$1.$2", "sles$1") : $_ } @dists} = ();
-      @d{map { /^(\d+)$/ && $1 >= 16 ? ("sle$1") : $_ } @dists} = ();
-      @d{map { /^sle[sd](\d+)$/ && $1 >= 16 ? ("sle$1") : $_ } @dists} = ();
-      for (16 .. 19) { delete $d{"sles$_"}; delete $d{"sled$_"}; }
+      @d{map { /^(\d+)$/ && $1 >= 16 ? ("sles$1.0") : $_ } @dists} = ();
+      @d{map { /^(\d+)\.(\d+)$/ && $1 >= 16 ? ("leap$1.$2", "sles$1.$2") : $_ } @dists} = ();
+      @d{map { /^sles?(\d+)$/ && $1 >= 16 ? ("sles$1.0") : $_ } @dists} = ();
+      for (16 .. 19) { delete $d{"sle$_"}; delete $d{"sles$_"}; delete $d{"sled$_"}; }
       @dists = sort keys %d;
       @dists = grep { !(/^(\d+)(\.(\d+))?$/ && $1 >= 15) } @dists;
     }
 
+    map { s/^micro(\d+)/$1 >= 6 ? "sl-micro$1" : "suse-microos$1"/e } @dists;
+    map { s/^leap(\d+)/$1 >= 16 ? "opensuse-leap$1" : "leap$1"/e } @dists;
+
     for (@dists) {
-      if(!/^((leap|kubic|casp|caasp|suse-microos)?\d+\.\d+|tw|sle[sd]\d+|sle1[6-9]|((fedora|rhel|sll)\d+))$/) {
+      if(!/^((opensuse-leap|leap|kubic|casp|caasp|sl-micro|suse-microos)?\d+\.\d+|tw|sle[sd]\d+|sles1[6-9]\.\d+|((fedora|rhel|sll)\d+))$/) {
         if(!$opt_fix_dist) {
           print STDERR "***  Note: using unsupported dist \"$_\"\n";
         }
@@ -925,8 +929,9 @@ sub new_dud
 
   my $dud_ok = 0;
 
-  my @dists = @dists;
-  my $dist = shift @dists;
+  my @my_dists = @dists;
+
+  my $dist = shift @my_dists;
 
   analyze_ycp_files \@files;
 
@@ -942,18 +947,35 @@ sub new_dud
 
   my $installer = installer_from_dist($dist);
 
+  my $product;
+  my $products;
+  for my $d (@dists) {
+    my $p = product_string "X-$d";
+    $products->{$p->{product}} = 1 if $p->{product};
+  }
+  $product = join ", ", sort keys %$products;
+
   for my $arch (sort keys %arch) {
     my $base = "$tmp_dud/linux/suse/$arch-$dist";
 
     mkdir $base, 0755;
 
-    for (@dists) {
+    for (@my_dists) {
       symlink "$arch-$dist", "$tmp_dud/linux/suse/$arch-$_";
     }
 
     open my $cfg, ">$base/dud.config";
     print $cfg "# created by mkdud $VERSION\n";
     print $cfg "UpdateID:\t$id\n";
+
+    if($product) {
+      print $cfg "UpdateProduct:\t$product\n";
+    }
+
+    if($use_all_archs) {
+      my $all = join ",", sort @all_archs;
+      print $cfg "UpdateAllArchs:\t$all\n";
+    }
 
     for (@opt_condition) {
       my $x = $_;
@@ -1248,7 +1270,7 @@ sub new_dud
 
     if($installer eq "yast" && $opt_fix_adddir) {
       # only for sle11, sle12, leap42.X, caasp1.X, caasp2.X, caasp3.X
-      if(grep { /^(sle[sd]?1[12]|leap42\.|caasp[1-3]\.)/ } (@dists, $dist)) {
+      if(grep { /^(sle[sd]?1[12]|leap42\.|caasp[1-3]\.)/ } (@my_dists, $dist)) {
         my $danger = 0;
         $danger ||= -e "$base/inst-sys/usr/bin/$_" for qw (chmod chown cp ln mktemp mv readlink rm);
         if($danger) {
@@ -1525,7 +1547,7 @@ gpg --batch --homedir /root/.gnupg --no-default-keyring --ignore-time-conflict -
     shift @a;
 
     for my $arch (@a) {
-      for ($dist, @dists) {
+      for ($dist, @my_dists) {
         symlink "$all_archs[0]-$_", "$tmp_dud/linux/suse/$arch-$_";
       }
     }
@@ -1831,7 +1853,9 @@ sub show_dud
       push @{$section->{$l}{links}}, $p;
     }
     elsif(-d $part) {
-      $section->{$p}{log} = show_single_dir $part;
+      my $single = show_single_dir $part;
+      $section->{$p}{log} = $single->{log};
+      $section->{$p}{all_archs} = $single->{all_archs};
     }
   }
 
@@ -1854,7 +1878,7 @@ sub show_dud
     push @{$s->{links}}, $_;
 
     print "  [";
-    print nice_arch_list($s->{links});
+    print nice_arch_list($s->{links}, $s->{all_archs});
     print "]\n";
 
     print $s->{log};
@@ -1863,62 +1887,97 @@ sub show_dud
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# $string = nice_arch_list(\@list)
+# { product => PRODUCT, arch => ARCH } = product_string str
+#
+# str is a string of the form "<arch>-<dist>".
+#
+# Return hash with parsed arch and nice product name, if the string matches some known product.
+#
+sub product_string
+{
+  my $str = $_[0];
+  my $prod;
+  my $arch;
+
+  if($str =~ /^(\S+?)-((sle([sd]?)|fedora|rhel|sll)(\d+)|(sles|opensuse-leap|leap|kubic|casp|caasp|sl-micro|suse-microos)?(\d+\.\d+)|tw|tumbleweed|opensuse-tumbleweed)$/) {
+    # print STDERR "+++ 1=$1 2=$2 3=$3 4=$4 5=$5 6=$6 7=$7 +++\n";
+    $arch = $1;
+    if($3 eq 'sles') {
+      $prod = "SUSE Linux Enterprise Server $5";
+    }
+    elsif($3 eq 'sled') {
+      $prod = "SUSE Linux Enterprise Desktop $5";
+    }
+    elsif($3 eq 'sle') {
+      $prod = "SUSE Linux Enterprise $5";
+    }
+    elsif($6 eq 'sles') {
+      $prod = "SUSE Linux Enterprise Server $7";
+    }
+    elsif($6 eq 'leap' || $6 eq 'opensuse-leap') {
+      $prod = "openSUSE Leap $7";
+    }
+    elsif($6 eq 'kubic') {
+      $prod = "openSUSE Kubic $7";
+    }
+    elsif($6 eq 'casp') {
+      $prod = "SUSE Containers as a Service Platform $7";
+    }
+    elsif($6 eq 'caasp') {
+      $prod = "SUSE Containers as a Service Platform $7";
+    }
+    elsif($6 eq 'sl-micro') {
+      $prod = "SUSE Linux Micro $7";
+    }
+    elsif($6 eq 'suse-microos') {
+      $prod = "SUSE Linux Enterprise Micro $7";
+    }
+    elsif($2 eq "tw" || $2 eq "tumbleweed" || $2 eq "opensuse-tumbleweed") {
+      $prod = "openSUSE Tumbleweed";
+    }
+    elsif($3 eq 'fedora') {
+      $prod = "Fedora $5";
+    }
+    elsif($3 eq 'rhel') {
+      $prod = "Red Hat Enterprise Linux $5";
+    }
+    elsif($3 eq 'sll') {
+      $prod = "SUSE Liberty Linux $5";
+    }
+    else {
+      $prod = "openSUSE $2";
+    }
+  }
+
+  return { product => $prod, arch => $arch };
+}
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# $string = nice_arch_list(\@list, $all_archs)
 #
 # Put a list of <arch>-<dist> values into something more compact and better
 # readable.
 #
 sub nice_arch_list
 {
-  my $l = shift;
+  my $l = $_[0];
+  my $all_archs = $_[1];
   local $_;
-  my $all_ar = join ", ", sort @all_archs;
+
+  if($all_archs eq "") {
+    $all_archs = join ",", sort @all_archs_legacy;
+  }
+
+  $all_archs =~ s/,/, /g;
 
   # split by known products
 
   my %p1;
   for (@$l) {
-    if(/^(\S+)-((sle([sd]?)|fedora|rhel|sll)(\d+)|(leap|kubic|casp|caasp|suse-microos)?(\d+\.\d+)|tw)$/) {
-      # print STDERR "+++ 1=$1 2=$2 3=$3 4=$4 5=$5 6=$6 7=$7 +++\n";
-      if($3 eq 'sles') {
-        push @{$p1{"SUSE Linux Enterprise Server $5"}}, $1;
-      }
-      elsif($3 eq 'sled') {
-        push @{$p1{"SUSE Linux Enterprise Desktop $5"}}, $1;
-      }
-      elsif($3 eq 'sle') {
-        push @{$p1{"SUSE Linux Enterprise $5"}}, $1;
-      }
-      elsif($6 eq 'leap') {
-        push @{$p1{"openSUSE Leap $7"}}, $1;
-      }
-      elsif($6 eq 'kubic') {
-        push @{$p1{"openSUSE Kubic $7"}}, $1;
-      }
-      elsif($6 eq 'casp') {
-        push @{$p1{"SUSE Containers as a Service Platform $7"}}, $1;
-      }
-      elsif($6 eq 'caasp') {
-        push @{$p1{"SUSE Containers as a Service Platform $7"}}, $1;
-      }
-      elsif($6 eq 'suse-microos') {
-        push @{$p1{"SUSE Linux Enterprise Micro $7"}}, $1;
-      }
-      elsif($2 eq "tw") {
-        push @{$p1{"openSUSE Tumbleweed"}}, $1;
-      }
-      elsif($3 eq 'fedora') {
-        push @{$p1{"Fedora $5"}}, $1;
-      }
-      elsif($3 eq 'rhel') {
-        push @{$p1{"Red Hat Enterprise Linux $5"}}, $1;
-      }
-      elsif($3 eq 'sll') {
-        push @{$p1{"SUSE Liberty Linux $5"}}, $1;
-      }
-      else {
-        push @{$p1{"openSUSE $2"}}, $1;
-      }
+    my $p = product_string $_;
+    if($p->{product}) {
+      push @{$p1{$p->{product}}}, $p->{arch};
     }
     else {
       push @{$p1{$_}}, "";
@@ -1950,7 +2009,7 @@ sub nice_arch_list
   my @l;
   for (sort keys %p2) {
     my $al = $p2{$_};
-    $al = "" if $al eq $all_ar;
+    $al = "" if $al eq $all_archs;
     push @l, $_ . ($al ? " ($al)" : "");
   }
 
@@ -1970,6 +2029,7 @@ sub show_single_dir
 
   my (@i, %i);
   my $id;
+  my $all_archs;
 
   my $installer_names = { agama => "Agama", anaconda => "Anaconda", yast => "YaST" };
 
@@ -1995,6 +2055,9 @@ sub show_single_dir
       }
       elsif("\L$key" eq 'updatename') {
         $sect{name} .= "      $val\n";
+      }
+      elsif("\L$key" eq 'updateallarchs') {
+        $all_archs = $val;
       }
       elsif("\L$key" eq 'boot') {
         $sect{boot} .= "      $val\n";
@@ -2372,7 +2435,7 @@ sub show_single_dir
     $log .= "    How to apply this DUD:\n$sect{howto}";
   }
 
-  return $log;
+  return { log => $log, all_archs => $all_archs };
 }
 
 
@@ -2782,7 +2845,7 @@ sub installer_from_dist
 
   my $installer = "yast";
 
-  $installer = "agama" if $dist =~ /^(sle[sd]?|leap)(\d+)/ && $2 >= 16;
+  $installer = "agama" if $dist =~ /^(sle[sd]?|.*leap)(\d+)/ && $2 >= 16;
 
   $installer = "anaconda" if $dist =~ /^(fedora|rhel|sll)\d+(\.\d+)?$/;
 
