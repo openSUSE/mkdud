@@ -1666,6 +1666,8 @@ sub write_dud
     }
   }
 
+  system "hardlink --quiet --content $tmp_src";
+
   my $cmd_archive = 'find . | cpio --quiet -o -H newc -R 0:0';
   $cmd_archive = 'tar -cf - .' if $format_archive eq 'tar';
 
