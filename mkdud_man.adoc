@@ -53,15 +53,16 @@ architectures is created.
 Specify the product the DUD is for. Possible values for _DIST_ include:
 `13.2`, `sle15`, `leap16.1`, `caasp1.0`, 'micro5.0', `tw` standing for
 openSUSE 13.2, SLE 15, Leap 16.1, CaaSP 1.0, SLE Micro 5.0, Tumbleweed, respectively. +
-*Note 1*: Since SLE 16 / Leap 16.0 Agama replaces YaST as installer. +
+Option can be repeated to specify several distribution targets.
+*Note 1*: Since SLES 16.0 / Leap 16.0 Agama replaces YaST as installer. +
 See *Agama vs. YaST* below for more details. +
 *Note 2*: `sle15` is a short hand for specifying both `sles15` and `sled15`. +
 *Note 3*: There are no separate names for service packs.
 So `sles15-sp1` is the same as `sles15`. But see *--condition*
 below for a way to target specific service packs. +
-*Note 4*: `sle16` is used for SLE 16. There are no service packs for the SLE 16 product line. +
 See *Distribution (Product) Names* below for more details. +
-Option can be repeated to specify several distribution targets.
+*Note 4*: For Tumbleweed, YaST is assumed as installer. If you need
+to apply the DUD to a Tumbleweed variant using Agama, use the *--installer* option.
 
 *--condition*=_SCRIPT_::
 Run _SCRIPT_ and apply DUD only if _SCRIPT_ has exit status 0.
@@ -291,26 +292,29 @@ you must configure the build service access via `$HOME/.oscrc` for this to work.
 
 The *--dist* option accepts these values (case-insensitive; X, Y: decimal numbers):
 
-- X.Y (e.g. `13.2`) = openSUSE X.Y
-- leapX.Y (e.g. `leap15.1`) = openSUSE Leap X.Y
+- leapX.Y (e.g. `leap16.1`) = openSUSE Leap X.Y
 - (obsolete) kubicX.Y (e.g. kubic1.0) = openSUSE Kubic X.Y
 - tw = openSUSE Tumbleweed
 - sleX (e.g. sle15) = SUSE Linux Enterprise (Server + Desktop) X
 - slesX (e.g. sles15) = SUSE Linux Enterprise Server X
 - sledX (e.g. sled15) = SUSE Linux Enterprise Desktop X - but see notes below
-- sle16, sles16 = SUSE Linux Enterprise 16
+- slesX.Y (e.g. sles16.1) = SUSE Linux Enterprise Server X.Y
 - caaspX.Y (e.g. caasp1.0) = SUSE Container as a Service Platform X.Y - see notes below
 - microX.Y (e.g. micro5.0) = SUSE Linux Enterprise Micro X.Y
 
 As a shorthand and to avoid common mistakes, these aliases do also work (X, Y: decimal numbers):
 
-- X.Y with X >= 15 (e.g. 15.1) resolves to: +
-  SUSE Linux Enterprise (Server + Desktop) X + openSUSE Leap X.Y
-- X with X >= 15 (e.g. 15) resolves to: +
-  SUSE Linux Enterprise (Server + Desktop) X
+- X.Y with X = 15 (e.g. 15.1) resolves to: +
+  SUSE Linux Enterprise (Server + Desktop) 15 + openSUSE Leap 15.Y
+- X.Y with X >= 16 (e.g. 16.1) resolves to: +
+  SUSE Linux Enterprise Server X.Y + openSUSE Leap X.Y
+- X with X = 15 resolves to: +
+  SUSE Linux Enterprise (Server + Desktop) 15
+- X with X >= 16 resolves to: +
+  SUSE Linux Enterprise Server X.0
 
 *Note 1*: there aren't any products anymore that actually use `sledX`,
-even SLED uses the `sles` DUDs meanwhile. Because of this, please just use `sleX`
+even SLED uses the `sles` DUDs meanwhile. Because of this, please just use `slesX`
 when creating a DUD for a SUSE Linux Enterprise product.
 
 *Note 2*: CaaSP releases are based on SLE releases. Since driver
@@ -346,8 +350,11 @@ You can specify several *--condition* options. They must all be fulfilled (logic
 
 == Agama vs. YaST
 
-Starting with SLE 16 and Leap 16.0, the installer changes from YaST to Agama. With this, the installation
+Starting with SLES 16.0 and Leap 16.0, the installer changes from YaST to Agama. With this, the installation
 system setup changes substantially and there are a few differences in driver update handling.
+
+There are currently Tumbleweed media with either Agama or YaST. Use the *--installer* option to specify for
+which variant you need the driver update in this case.
 
 With Agama:
 
@@ -370,7 +377,7 @@ you still have to provide a script with this name to the mkdud command:
 +
 [source]
 ----
-mkdud --create foobar.dud --dist sle16 \
+mkdud --create foobar.dud --dist sles16.1 \
 --dracut-hook pre-pivot:90-foobar.sh 90-foobar.sh
 ----
 
@@ -379,7 +386,7 @@ runs this command and the script is added to *HOOK*; for example:
 +
 [source]
 ----
-mkdud --create foobar.dud --dist sle16 \
+mkdud --create foobar.dud --dist sles16.1 \
 --dracut-hook "pre-pivot:echo hello"
 ----
 
