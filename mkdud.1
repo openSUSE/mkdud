@@ -1,0 +1,1214 @@
+'\" t
+.\"     Title: mkdud
+.\"    Author: [see the "AUTHOR(S)" section]
+.\" Generator: Asciidoctor 2.0.23
+.\"      Date: 2026-03-30
+.\"    Manual: User Commands
+.\"    Source: mkdud 2.5
+.\"  Language: English
+.\"
+.TH "MKDUD" "1" "2026-03-30" "mkdud 2.5" "User Commands"
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ss \n[.ss] 0
+.nh
+.ad l
+.de URL
+\fI\\$2\fP <\\$1>\\$3
+..
+.als MTO URL
+.if \n[.g] \{\
+.  mso www.tmac
+.  am URL
+.    ad l
+.  .
+.  am MTO
+.    ad l
+.  .
+.  LINKSTYLE blue R < >
+.\}
+.SH "NAME"
+mkdud \- create and manage SUSE Linux driver updates
+.SH "SYNOPSIS"
+.sp
+\fBmkdud\fP [\fIOPTIONS\fP]... \fISOURCES\fP...
+.SH "DESCRIPTION"
+.sp
+mkdud manages driver updates (DUD) for SUSE Linux. You can create them, view their contents, and
+combine several driver updates into a single one.
+.SS "General Options"
+.sp
+\fB\-\-version\fP
+.RS 4
+Show mkdud version.
+.RE
+.sp
+\fB\-\-mkisofs\fP
+.RS 4
+Use mkiosfs to build ISO images (default if available).
+.RE
+.sp
+\fB\-\-xorriso\fP
+.RS 4
+Use xorriso to build ISO images.
+.RE
+.sp
+\fB\-\-save\-temp\fP
+.RS 4
+Keep temporary files.
+.RE
+.sp
+\fB\-\-help\fP
+.RS 4
+Show this help text.
+.RE
+.SS "Verify Driver Update"
+.sp
+\fB\-s, \-\-show\fP=\fIDUD\fP
+.RS 4
+Verify \fIDUD\fP and print a summary. \fIDUD\fP may be a file or directory or an ISO image.
+.RE
+.SS "Create Driver Update"
+.sp
+\fB\-c, \-\-create\fP=\fIDUD\fP
+.RS 4
+Create new driver update \fIDUD\fP from \fISOURCES\fP.
+.RE
+.sp
+\fB\-a, \-\-arch\fP=\fIARCH\fP
+.RS 4
+Build for target \fIARCH\fP (default: auto detected from \fISOURCES\fP).
+Option can be repeated to specify several achitectures.
+.br
+\fBNote\fP: if you don\(cqt set the architecture and mkdud can\(cqt
+find a hint in \fISOURCES\fP either an update for all supported
+architectures is created.
+.RE
+.sp
+\fB\-d, \-\-dist\fP=\fIDIST\fP
+.RS 4
+Specify the product the DUD is for. Possible values for \fIDIST\fP include:
+\f(CR13.2\fP, \f(CRsle15\fP, \f(CRleap16.1\fP, \f(CRcaasp1.0\fP, \*(Aqmicro5.0\*(Aq, \f(CRtw\fP standing for
+openSUSE 13.2, SLE 15, Leap 16.1, CaaSP 1.0, SLE Micro 5.0, Tumbleweed, respectively.
+.br
+Option can be repeated to specify several distribution targets.
+\fBNote 1\fP: Since SLES 16.0 / Leap 16.0 Agama replaces YaST as installer.
+.br
+See \fBAgama vs. YaST\fP below for more details.
+.br
+\fBNote 2\fP: \f(CRsle15\fP is a short hand for specifying both \f(CRsles15\fP and \f(CRsled15\fP.
+.br
+\fBNote 3\fP: There are no separate names for service packs.
+So \f(CRsles15\-sp1\fP is the same as \f(CRsles15\fP. But see \fB\-\-condition\fP
+below for a way to target specific service packs.
+.br
+See \fBDistribution (Product) Names\fP below for more details.
+.br
+\fBNote 4\fP: Tumbleweed and  Slowroll may use either Agama or YaST as installer.
+You have to use the \fB\-\-installer\fP option to say for which one the DUD is intended.
+.RE
+.sp
+\fB\-\-condition\fP=\fISCRIPT\fP
+.RS 4
+Run \fISCRIPT\fP and apply DUD only if \fISCRIPT\fP has exit status 0.
+If \fISCRIPT\fP has the special name \f(CRServicePackN\fP (\fIN\fP = 0, 1, 2, ...),
+a script that checks for service pack \fIN\fP is generated and added.
+\fIN\fP = 0 refers to the main product (without service pack).
+.br
+\fBNote\fP: For Tumbleweed you can pass the snapshot version as \fIN\fP
+to limit the DUD to a specific snapshot.
+.br
+Option can be repeated to specify several conditions.
+.RE
+.sp
+\fB\-p, \-\-prio\fP=\fINUM\fP
+.RS 4
+Set repository priority to \fINUM\fP; lower \fINUM\fP means higher priority
+(default: 50).
+.RE
+.sp
+\fB\-n, \-\-name\fP=\fINAME\fP
+.RS 4
+Set driver update name. If you update packages or modules
+a default name is generated based on the package and module
+versions.
+.br
+Option can be repeated to specify a multi\-line name.
+.RE
+.sp
+\fB\-x, \-\-exec\fP=\fICOMMAND\fP
+.RS 4
+Run \fICOMMAND\fP right after the driver update has been loaded.
+.br
+Option can be repeated to specify several commands.
+.br
+\fBNote\fP: The commands are run just before (YaST) or after (Agama) kernel modules
+are updated.
+.br
+.RE
+.sp
+\fB\-\-dracut\-hook\fP=\fIHOOK:CMD\fP
+.RS 4
+Insert CMD into dracut hook HOOK.
+.br
+HOOK must be a valid dracut hook name. CMD is either a custom script to run or a command to run.
+.br
+Option can be repeated.
+.br
+See \fBAdding dracut hooks\fP below for details.
+.RE
+.sp
+\fB\-i, \-\-install\fP=\fIMETHODS\fP
+.RS 4
+Package install method. \fIMETHODS\fP is a comma\-separated list
+of: \f(CRinstsys\fP, \f(CRrepo\fP, \f(CRrpm\fP (default (Agama): \f(CRinstsys,repo\fP, default (YaST): \f(CRinstsys,repo,rpm\fP).
+.br
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CRinstsys\fP: unpack packages in installation system / live root
+.br
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CRrepo\fP: create repo with all packages and register with
+Agama or YaST before starting installation; repo will be removed
+after the installation
+.br
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CRrpm\fP: install packages at the end of the installation
+using rpm (that is, not via repo & zypper) \- this method is
+only available for YaST
+.br
+.RE
+.RE
+.sp
+\fB\-\-initrd\fP=\fIRPM|DIR\fP
+.RS 4
+Add RPM or content of DIR to initrd.
+.br
+Option can be repeated to add several packages or directories.
+.br
+This requires applying the driver update with \fBmkmedia\fP to work.
+.br
+See \fBHow to apply driver updates\fP below for details.
+.RE
+.sp
+\fB\-\-iso\fP=\fIDIR\fP
+.RS 4
+Add content of DIR to installation ISO image.
+.br
+Option can be repeated to add several directories.
+.br
+Use this option to update for example shim or grub on the installation medium.
+.br
+This requires applying the driver update with \fBmkmedia\fP to work.
+.br
+See \fBHow to apply driver updates\fP below for details.
+.RE
+.sp
+\fB\-\-installer\fP=\fIINSTALLER\fP
+.RS 4
+Set installation program. Either agama or yast (default: auto\-detected based on dist).
+.br
+It is usually not necessary to use this option. There are minor differences in handling driver updates
+between Agama and YaST, though. mkdud takes these into account.
+.RE
+.sp
+\fB\-\-config\fP=\fIKEY\fP=\fIVALUE\fP
+.RS 4
+Set initrd config option \fIKEY\fP to \fIVALUE\fP. The options are changed
+just after the driver update has been loaded.
+.br
+You can set boot options using KEY \*(Aqboot\*(Aq.
+Setting boot options accepts the same semantics as \fBmkmedia\fP (see \fBmkmedia\fP docs); in particular, prefixing a
+boot option with \*(Aq\-\*(Aq removes it.
+.br
+See \fBHow to apply driver updates\fP below for limitations.
+.br
+Option can be repeated to set several options.
+.RE
+.sp
+\fB\-\-no\-docs\fP
+.RS 4
+Don\(cqt include package documentation in unpacked instsys tree
+(to save space).
+.br
+This is the default setting.
+.RE
+.sp
+\fB\-\-keep\-docs\fP
+.RS 4
+Include package documentation in unpacked instsys tree.
+.RE
+.sp
+\fB\-\-force\fP
+.RS 4
+Obsolete. Use one or more of \fB\-\-no\-fix\-XXX\fP instead.
+.RE
+.sp
+\fB\-\-no\-fix\-yast\fP
+.RS 4
+Allow driver update to replace \f(CR/sbin/yast\fP.
+.br
+See \fBConsistency checks\fP.
+.RE
+.sp
+\fB\-\-no\-fix\-dist\fP
+.RS 4
+Allow to specify an arbitrary distribution name with \fB\-\-dist\fP.
+.br
+See \fBConsistency checks\fP.
+.RE
+.sp
+\fB\-\-no\-fix\-usr\-src\fP
+.RS 4
+Allow driver update to include \f(CR/usr/src/packages\fP.
+.br
+See \fBConsistency checks\fP.
+.RE
+.sp
+\fB\-\-no\-fix\-adddir\fP
+.RS 4
+Do not include an updated \f(CRadddir\fP script.
+.br
+See \fBConsistency checks\fP.
+.RE
+.sp
+\fB\-\-no\-check\-hooks\fP
+.RS 4
+Do not restict dracut hook names.
+.br
+See \fBAdding dracut hooks\fP.
+.RE
+.sp
+\fB\-\-format\fP=\fIFORMAT\fP
+.RS 4
+Specify archive format for DUD. \fIFORMAT\fP=\f(CR((cpio|tar|iso)[.(gz|xz)])|rpm\fP.
+.br
+Default \fIFORMAT\fP is \f(CRcpio.gz\fP (gzip compressed cpio archive).
+.br
+Using \fIFORMAT\fP \*(Aqiso\*(Aq produces an ISO image with label \*(AqOEMDRV\*(Aq \-
+see \fBHow to apply driver updates\fP below for more information.
+.br
+\fBNote\fP: please check \f(CRREADME.md\fP before changing the default.
+.RE
+.sp
+\fB\-\-prefix\fP=\fINUM\fP
+.RS 4
+First directory prefix of driver update.
+.br
+See \f(CRREADME\fP.
+.RE
+.sp
+\fB\-\-sign\fP
+.RS 4
+Sign the driver update.
+.RE
+.sp
+\fB\-\-detached\-sign\fP
+.RS 4
+Sign the driver update. This creates a detached signature.
+.RE
+.sp
+\fB\-\-sign\-key\fP=\fIKEY_FILE\fP
+.RS 4
+Use this key for signing. Alternatively, use the \f(CRsign\-key\fP entry in \f(CR~/.mkdudrc\fP.
+.RE
+.sp
+\fB\-\-sign\-key\-id\fP=\fIKEY_ID\fP
+.RS 4
+Use this key id for signing (anything gpg accepts).
+Alternatively, use the \f(CRsign\-key\-id\fP entry in \f(CR~/.mkdudrc\fP.
+.br
+If both \fB\-\-sign\-key\fP and \fB\-\-sign\-key\-id\fP are specified, \fB\-\-sign\-key\-id\fP wins.
+.br
+\fBNote\fP: gpg might show an interactive dialog asking for a password to unlock the key.
+.RE
+.sp
+\fB\-\-volume\fP
+.RS 4
+Set ISO volume id (if using format \f(CRiso\fP).
+.RE
+.sp
+\fB\-\-vendor\fP
+.RS 4
+Set ISO publisher id (if using format \f(CRiso\fP).
+.RE
+.sp
+\fB\-\-preparer\fP
+.RS 4
+Set ISO data preparer id (if using format \f(CRiso\fP).
+.RE
+.sp
+\fB\-\-application\fP
+.RS 4
+Set ISO application id (if using format \f(CRiso\fP).
+.RE
+.sp
+\fB\-\-obs\-keys\fP
+.RS 4
+Retrieve and add project keys from the openSUSE Build Service
+as needed to verify the RPMs in \fISOURCES\fP.
+.br
+See \fBAdding RPMs\fP below.
+.RE
+.SH "CONFIGURATION FILE"
+.sp
+mkdud reads \f(CR$HOME/.mkdudrc\fP at startup. There\(cqs only one possible entry:
+.sp
+\fBsign\-key\fP=\fIKEY_FILE\fP
+.RS 4
+File name of the private signing key. The same as the \fB\-\-sign\-key\fP option.
+.RE
+.sp
+\fBsign\-key\-id\fP=\fIKEY_ID\fP
+.RS 4
+Key id of the signing key. The same as the \fB\-\-sign\-key\-id\fP option.
+.RE
+.SH "DRIVER UPDATE SOURCES"
+.sp
+To create a driver update you need \fISOURCES\fP. \fISOURCES\fP may be:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+existing driver updates; either as archive, rpm, or unpacked directory;
+all driver updates are joined
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+RPMs; Packages not containing a driver update are used according to the value
+of the \fB\-\-install\fP option
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+PGP pubic key files (ASCII); the files are added to the rpm key database for verifying
+RPMs during the installation process; see \fBAdding RPMs\fP below
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+kernel modules
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CRmodule.order\fP and \f(CRmodule.config\fP files; see Update Media HOWTO.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CRupdate.pre\fP, \f(CRupdate.post\fP, \f(CRupdate.post2\fP scripts; see Update Media HOWTO;
+note that you can specify several \f(CRupdate.post\fP, etc. scripts; they are all run
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CR*.ycp\fP, \f(CR*.ybc\fP, or \f(CR*.rb\fP files; files are copied to the correct places automatically
+if they contain a usable \f(CRFile:\fP comment
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\f(CRy2update\fP directories
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+program files (binaries, libraries, executable scripts); they are put into the
+\f(CRinstall\fP dir; you can run them if needed using the \fB\-\-exec\fP option
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+plain text files; they are considered documentation
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+directories that are neither DUDs nor YaST updates; everything below the directory
+is added to the installation system
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+ISO images; the images are unpacked and scanned for driver updates
+.RE
+.SH "ADDING RPMS"
+.sp
+If you add RPMs to \fISOURCES\fP, these RPMs can be used to update the installation system
+and/or to be installed in the target system. See \fB\-\-install\fP option on how to choose.
+.sp
+The best way is to go for \f(CRrepo\fP to install them in the target system as then they
+are handled by the package manager and package dependencies are automatically resolved.
+.sp
+But there are two catches:
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 1.\h'+01'\c
+.\}
+.el \{\
+.  sp -1
+.  IP " 1." 4.2
+.\}
+The package must be actually required by the selected pattern or it must be
+manually selected in the package manager; else it won\(cqt be installed at all.
+.sp
+This is normally no problem if you update a package (as it\(cqs likely required, else
+you wouldn\(cqt want to update it) but if you try to install some uncommon package
+it might not be selected.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 2.\h'+01'\c
+.\}
+.el \{\
+.  sp -1
+.  IP " 2." 4.2
+.\}
+If the package is signed, the signature will be checked by the package manager
+and you\(cqll end up with a warning if the necessary public key is not available. This
+particularly happens with packages from the openSUSE Build Service which were built
+in some user\(cqs project.
+.sp
+For this, mkdud will package any pgp public key files you add to \fISOURCES\fP in a way so
+that they are used by the package manager during installation. They will \fBnot\fP be
+installed in the target system.
+.sp
+To ease this even more, the \fB\-\-obs\-keys\fP option causes mkdud to retrieve the necessary
+keys for each RPM in \fISOURCES\fP from the build service using the \f(CRosc\fP tool. Note that
+you must configure the build service access via \f(CR$HOME/.oscrc\fP for this to work.
+.RE
+.SH "DISTRIBUTION (PRODUCT) NAMES:"
+.sp
+The \fB\-\-dist\fP option accepts these values (case\-insensitive; X, Y: decimal numbers):
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+leapX.Y (e.g. \f(CRleap16.1\fP) = openSUSE Leap X.Y
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+(obsolete) kubicX.Y (e.g. kubic1.0) = openSUSE Kubic X.Y
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+slowroll = openSUSE Slowroll
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+tw, tumbleweed = openSUSE Tumbleweed
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+sleX (e.g. sle15) = SUSE Linux Enterprise (Server + Desktop) X
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+slesX (e.g. sles15) = SUSE Linux Enterprise Server X
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+sledX (e.g. sled15) = SUSE Linux Enterprise Desktop X \- but see notes below
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+slesX.Y (e.g. sles16.1) = SUSE Linux Enterprise Server X.Y
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+caaspX.Y (e.g. caasp1.0) = SUSE Container as a Service Platform X.Y \- see notes below
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+microX.Y (e.g. micro5.0) = SUSE Linux Enterprise Micro X.Y
+.RE
+.sp
+As a shorthand and to avoid common mistakes, these aliases do also work (X, Y: decimal numbers):
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+X.Y with X = 15 (e.g. 15.1) resolves to:
+.br
+SUSE Linux Enterprise (Server + Desktop) 15 + openSUSE Leap 15.Y
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+X.Y with X >= 16 (e.g. 16.1) resolves to:
+.br
+SUSE Linux Enterprise Server X.Y + openSUSE Leap X.Y
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+X with X = 15 resolves to:
+.br
+SUSE Linux Enterprise (Server + Desktop) 15
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+X with X >= 16 resolves to:
+.br
+SUSE Linux Enterprise Server X.0
+.RE
+.sp
+\fBNote 1\fP: there aren\(cqt any products anymore that actually use \f(CRsledX\fP,
+even SLED uses the \f(CRsles\fP DUDs meanwhile. Because of this, please just use \f(CRslesX\fP
+when creating a DUD for a SUSE Linux Enterprise product.
+.sp
+\fBNote 2\fP: CaaSP releases are based on SLE releases. Since driver
+updates are usually released for a specific SLE version mkdud provides a
+mapping CaaSP release <\(-> SLE release when building with \fB\-\-dist\fP=caspX.Y.
+Currently:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+caasp1.0 = sles12 (\-sp2)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+caasp2.0 = sles12 (\-sp3)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+caasp3.0 = sles12 (\-sp3)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+caasp4.0 = sles15
+.RE
+.sp
+Kubic is based on Tumbleweed. For compatibility, \fB\-\-dist\fP=kubic... variants are still
+supported but will be mapped to Tumbleweed. Please use \fB\-\-dist\fP=tw directly.
+.sp
+openSUSE MicroOS (not to be confused with SUSE Linux Enterprise Micro) is
+based on Tumbleweed. Use \fB\-\-dist\fP=tw.
+.sp
+Driver updates built for SLE 12 will implicitly also work with
+CaaSP3.0; those built for SLE 15 will implicitly also work with CaaSP4.0. But
+this is not true for CaaSP1.0 and CaaSP2.0.
+.sp
+Normally, a DUD will apply to the main release as well as to all the service packs.
+To target a specific service pack, use the \fB\-\-condition\fP option.
+For example, to get a DUD exclusively for \f(CRsle15\-sp1\fP:
+\fB\-\-dist\fP=sle15\~\fB\-\-condition\fP=ServicePack1
+.sp
+This works also to target a specifc Tumbleweed release (YaST based only):
+\fB\-\-dist\fP=tw\~\fB\-\-condition\fP=20191231.
+.sp
+You can specify several \fB\-\-condition\fP options. They must all be fulfilled (logical \fBand\fP).
+.SH "AGAMA VS. YAST"
+.sp
+Starting with SLES 16.0 and Leap 16.0, the installer changes from YaST to Agama. With this, the installation
+system setup changes substantially and there are a few differences in driver update handling.
+.sp
+There are currently Tumbleweed/Slowroll media with either Agama or YaST. Use the \fB\-\-installer\fP option to specify for
+which variant you need the driver update in this case.
+.sp
+With Agama:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+dracut replaces linuxrc for initial setup steps in the initrd; this results in different boot and config options
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+the \fB\-\-install=rpm\fP package install method is not available; all package updates intended
+for the target system are done by creating a software repository with all packages
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+there are no update.pre or update.post scripts
+.RE
+.SH "ADDING DRACUT HOOKS"
+.sp
+You can add dracut hooks using the \fB\-\-dracut\-hook HOOK:CMD\fP option. This can either be a
+provided custom script or a command to run \- which is implicitly inserted into a suitable script.
+.sp
+Let\(cqs see some excamples:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+If \fBCMD\fP follows the naming scheme NN\-NAME.sh with NN a 2\-digit number and NAME some arbitrary name then
+it is assumed that this is a script to run in \fBHOOK\fP; e.g. \fB\-\-dracut\-hook pre\-pivot:90\-foobar.sh\fP. Note that
+you still have to provide a script with this name to the mkdud command:
+.sp
+.if n .RS 4
+.nf
+.fam C
+mkdud \-\-create foobar.dud \-\-dist sles16.1 \(rs
+\-\-dracut\-hook pre\-pivot:90\-foobar.sh 90\-foobar.sh
+.fam
+.fi
+.if n .RE
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+Otherwise, \fBCMD\fP is assumed to be a command to run. A \fBscript 99\-zz\(emmkdud.sh\fP will be automatically created which
+runs this command and the script is added to \fBHOOK\fP; for example:
+.sp
+.if n .RS 4
+.nf
+.fam C
+mkdud \-\-create foobar.dud \-\-dist sles16.1 \(rs
+\-\-dracut\-hook "pre\-pivot:echo hello"
+.fam
+.fi
+.if n .RE
+.RE
+.sp
+Hook names can be (or use \fB\-\-no\-check\-hooks\fP to allow arbitrary names):
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+cleanup, cmdline, emergency, mount, netroot, pre\-mount, pre\-pivot, pre\-shutdown, pre\-trigger, pre\-udev, shutdown, shutdown\-emergency,
+initqueue/finished, initqueue/online, initqueue/settled, initqueue/timeout
+.RE
+.sp
+See dracut.modules(7) for documentation.
+.SH "CONSISTENCY CHECKS"
+.sp
+It is possible to create driver updates that will predictably not work
+because they interfere with the setup of the installation environment.
+.sp
+mkdud will warn you and try to work around these cases. But there still
+may be valid use\-cases so the \fB\-\-fix\-XXX\fP / \fB\-\-no\-fix\-XXX\fP group of options
+lets you enable (default) or disable these workarounds.
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\fB\-\-[no\-]fix\-yast\fP
+.br
+In older SUSE versions \f(CR/sbin/yast\fP was a different script in the
+installation environment than the one from the yast package. Updating
+the special variant with the regular script would make the installation
+impossible. mkdud recognizes this and removes \f(CR/sbin/yast\fP from driver
+updates.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\fB\-\-[no\-]fix\-dist\fP
+.br
+The \fB\-\-dist\fP option normally allows you to specify only distributions
+mkdud knows about. With this option you may put anything there \- in case
+you know better.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\fB\-\-[no\-]fix\-usr\-src\fP
+.br
+The installation system must not contain a \f(CR/usr/src/packages\fP directory.
+mkdud normally removes it (and its content) from driver updates.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\fB\-\-[no\-]fix\-adddir\fP
+.br
+The \f(CR/sbin/adddir\fP script is used in the installation system to actually
+apply the part of a driver update that replaces files in the
+installation system. In older SUSE versions this script was not able to
+update some programs from the \f(CRcoreutils\fP package. mkdud implicitly
+includes an update for this script if it detects a need for it.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+\fB\-\-[no\-]check\-hooks\fP
+.br
+mkdud will only allow dracut hook names it knows about. But dracut may evolve.
+Use this option to disable the check if necessary.
+.RE
+.SH "HOW TO APPLY DRIVER UPDATES"
+.sp
+There are several ways to apply driver updates:
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 1.\h'+01'\c
+.\}
+.el \{\
+.  sp -1
+.  IP " 1." 4.2
+.\}
+During installation
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+using boot option \fBinst.dud=URL_TO_DUD_FILE\fP (Agama) resp. \fBdud=URL_TO_DUD_FILE\fP (YaST)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+unpack the driver update to a local file system with label \fBOEMDRV\fP (YaST)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+rename the driver update to \fBdriverupdate\fP and place it into the root of the installation repository (at the
+same level where the \fBrepodata\fP directory is) (YaST)
+.RE
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 2.\h'+01'\c
+.\}
+.el \{\
+.  sp -1
+.  IP " 2." 4.2
+.\}
+By preparing patched installation media
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+using \fBmkmedia \-\-create new.iso \-\-initrd DUD_FILE orig.iso\fP
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+using \fBmkmedia \-\-create new.iso \-\-apply\-dud DUD_FILE orig.iso\fP
+.RE
+.RE
+.sp
+The difference between \fB\-\-apply\-dud\fP and \fB\-\-initrd\fP is that \fB\-\-apply\-dud\fP applies the driver update directly to the
+installation medium while \fB\-\-initrd\fP only adds the driver update to the initrd where it will be found and applied at
+installation time (equivalent to using the \fBinst.dud\fP or \fBdud\fP boot options).
+.sp
+Only with \fB\-\-apply\-dud\fP you can apply changes to the initrd, boot options, or the installation ISO.
+.sp
+\fBmkdud \-\-show DUD_FILE\fP tells you which ways are available for a specific driver update.
+.sp
+Using \fBmkdud \-\-format=iso ...\fP produces an ISO9660 file system with label \fBOEMDRV\fP \- ready to be used in the OEMDRV method
+described above (no unpacking needed).
+.sp
+\fBNote\fP: If you have package updates for the live root file system (using \fB\-\-install=instsys\fP) the updated packages
+are added to the installation system / live root \- but rpm scripts are not run and the live root rpm database is not updated.
+.sp
+\fBHint\fP: If it simplifies your workflow, combine several driver updates into a single update; e.g.:
+.br
+\fBmkdud \-\-create foo_all.dud foo1.dud foo2.dud foo3.dud ...\fP
+.SH "EXAMPLES"
+.sp
+.if n .RS 4
+.nf
+.fam C
+# show content of foo.dud
+mkdud \-\-show foo.dud
+
+# create update for hello.rpm
+mkdud \-\-create foo.dud \-\-dist leap15.1 hello.rpm
+
+# create kernel update
+mkdud \-\-create foo.dud \-\-dist leap15.1 kernel\-*.rpm
+
+# create kernel update and replace tg3 module
+mkdud \-\-create foo.dud \-\-dist leap15.1 kernel\-*.rpm tg3.ko
+
+# create kernel update, replace tg3 module, add some docs
+# and give the driver update a nice name
+mkdud \-\-create foo.dud \-\-dist leap15.1 \-\-name \*(Aqfor granny\*(Aq kernel\-*.rpm tg3.ko README
+
+# update some YaST stuff
+mkdud \-\-create foo.dud \-\-dist leap15.1 BootCommon.y*
+
+# add directory tree below newstuff/ to installation system
+mkdud \-\-create foo.dud \-\-dist leap15.1 newstuff
+
+# extract driver updates from ISO (you need root permissions for that)
+mkdud \-\-create foo.dud xxx.iso
+
+# create update for hello.rpm and join with foo1.dud and foo2.dud
+mkdud \-\-create foo.dud \-\-dist sle15 foo1.dud foo2.dud hello.rpm
+.fam
+.fi
+.if n .RE
+.sp
+Find more usage examples here: \c
+.URL "https://github.com/openSUSE/mkdud/blob/master/HOWTO.md" "" "."
+.SH "SEE ALSO"
+.sp
+\fBmkmedia(1)\fP, \fBdracut.modules(7)\fP, \fBdracut.cmdline(7)\fP.
+.SH "LINKS"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+more documentation: \f(CR/usr/share/doc/packages/mkdud\fP
+.br
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+mkdud web site: \c
+.URL "https://github.com/openSUSE/mkdud" ""
+.br
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+Update Media HOWTO: \c
+.URL "http://ftp.suse.com/pub/people/hvogel/Update\-Media\-HOWTO/index.html" "" ""
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+mkmedia / mksusecd web site: \c
+.URL "https://github.com/openSUSE/mksusecd" "" ""
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.  sp -1
+.  IP \(bu 2.3
+.\}
+openSUSE Build Service: \c
+.URL "https://build.opensuse.org" "" ""
+.RE
