@@ -336,6 +336,7 @@ if($opt_create) {
       map { tr/-//d } @dists;
       # kubic is part of tumbleweed
       map { s/^(tumbleweed|tw|kubic).*/tw/g } @dists;
+      map { s/^(slowroll).*/slowroll/g } @dists;
       # map 'casp' to the new 'caasp'
       map { s/^casp(\d)/caasp$1/ } @dists;
       # CaaSP should be aligned with the respective SLES
@@ -361,8 +362,14 @@ if($opt_create) {
     map { s/^micro(\d+)/$1 >= 6 ? "sl-micro$1" : "suse-microos$1"/e } @dists;
     map { s/^leap(\d+)/$1 >= 16 ? "opensuse-leap$1" : "leap$1"/e } @dists;
 
+    my $is_tumbleweed = 0;
+    my $is_slowroll = 0;
+
+    map { s/^tw$/$is_tumbleweed++, $opt_installer eq 'yast' ? "tw" : "opensuse-tumbleweed"/e } @dists;
+    map { s/^slowroll$/$is_slowroll++, $opt_installer eq 'yast' ? "tw" : "opensuse-slowroll"/e } @dists;
+
     for (@dists) {
-      if(!/^((opensuse-leap|leap|kubic|casp|caasp|sl-micro|suse-microos)?\d+\.\d+|tw|sle[sd]\d+|sles1[6-9]\.\d+|((fedora|rhel|sll)\d+))$/) {
+      if(!/^((opensuse-leap|leap|kubic|casp|caasp|sl-micro|suse-microos)?\d+\.\d+|tw|opensuse-tumbleweed|opensuse-slowroll|sle[sd]\d+|sles1[6-9]\.\d+|((fedora|rhel|sll)\d+))$/) {
         if(!$opt_fix_dist) {
           print STDERR "***  Note: using unsupported dist \"$_\"\n";
         }
@@ -370,6 +377,15 @@ if($opt_create) {
           die "Error: unsupported dist \"$_\" (e.g. sle15, tw; use --help for supported dists, --no-fix-dist to override)\n";
         }
       }
+    }
+
+    my $msg = " may use Agama or YaST; use the --installer option to specify for which installer this DUD is intended.\n";
+
+    if($is_tumbleweed && !$opt_installer) {
+      die "openSUSE Tumbleweed" . $msg;
+    }
+    if($is_slowroll && !$opt_installer) {
+      die "openSUSE Slowroll" . $msg;
     }
   }
 
@@ -1899,7 +1915,7 @@ sub product_string
   my $prod;
   my $arch;
 
-  if($str =~ /^(\S+?)-((sle([sd]?)|fedora|rhel|sll)(\d+)|(sles|opensuse-leap|leap|kubic|casp|caasp|sl-micro|suse-microos)?(\d+\.\d+)|tw|tumbleweed|opensuse-tumbleweed)$/) {
+  if($str =~ /^(\S+?)-((sle([sd]?)|fedora|rhel|sll)(\d+)|(sles|opensuse-leap|leap|kubic|casp|caasp|sl-micro|suse-microos)?(\d+\.\d+)|tw|opensuse-tumbleweed|opensuse-slowroll)$/) {
     # print STDERR "+++ 1=$1 2=$2 3=$3 4=$4 5=$5 6=$6 7=$7 +++\n";
     $arch = $1;
     if($3 eq 'sles') {
@@ -1932,8 +1948,11 @@ sub product_string
     elsif($6 eq 'suse-microos') {
       $prod = "SUSE Linux Enterprise Micro $7";
     }
-    elsif($2 eq "tw" || $2 eq "tumbleweed" || $2 eq "opensuse-tumbleweed") {
+    elsif($2 eq "tw" || $2 eq "opensuse-tumbleweed") {
       $prod = "openSUSE Tumbleweed";
+    }
+    elsif($2 eq "opensuse-slowroll") {
+      $prod = "openSUSE Slowroll";
     }
     elsif($3 eq 'fedora') {
       $prod = "Fedora $5";
