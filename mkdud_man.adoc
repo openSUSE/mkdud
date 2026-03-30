@@ -24,6 +24,12 @@ combine several driver updates into a single one.
 *--version*::
 Show mkdud version.
 
+*--mkisofs*::
+Use mkiosfs to build ISO images (default if available).
+
+*--xorriso*::
+Use xorriso to build ISO images.
+
 *--save-temp*::
 Keep temporary files.
 
@@ -61,8 +67,8 @@ See *Agama vs. YaST* below for more details. +
 So `sles15-sp1` is the same as `sles15`. But see *--condition*
 below for a way to target specific service packs. +
 See *Distribution (Product) Names* below for more details. +
-*Note 4*: For Tumbleweed, YaST is assumed as installer. If you need
-to apply the DUD to a Tumbleweed variant using Agama, use the *--installer* option.
+*Note 4*: Tumbleweed and  Slowroll may use either Agama or YaST as installer.
+You have to use the *--installer* option to say for which one the DUD is intended.
 
 *--condition*=_SCRIPT_::
 Run _SCRIPT_ and apply DUD only if _SCRIPT_ has exit status 0.
@@ -294,7 +300,8 @@ The *--dist* option accepts these values (case-insensitive; X, Y: decimal number
 
 - leapX.Y (e.g. `leap16.1`) = openSUSE Leap X.Y
 - (obsolete) kubicX.Y (e.g. kubic1.0) = openSUSE Kubic X.Y
-- tw = openSUSE Tumbleweed
+- slowroll = openSUSE Slowroll
+- tw, tumbleweed = openSUSE Tumbleweed
 - sleX (e.g. sle15) = SUSE Linux Enterprise (Server + Desktop) X
 - slesX (e.g. sles15) = SUSE Linux Enterprise Server X
 - sledX (e.g. sled15) = SUSE Linux Enterprise Desktop X - but see notes below
@@ -342,7 +349,7 @@ To target a specific service pack, use the *--condition* option.
 For example, to get a DUD exclusively for `sle15-sp1`:
 *--dist*=sle15{nbsp}**--condition**=ServicePack1
 
-This works also to target a specifc Tumbleweed release:
+This works also to target a specifc Tumbleweed release (YaST based only):
 *--dist*=tw{nbsp}**--condition**=20191231.
 
 You can specify several *--condition* options. They must all be fulfilled (logical *and*).
@@ -353,7 +360,7 @@ You can specify several *--condition* options. They must all be fulfilled (logic
 Starting with SLES 16.0 and Leap 16.0, the installer changes from YaST to Agama. With this, the installation
 system setup changes substantially and there are a few differences in driver update handling.
 
-There are currently Tumbleweed media with either Agama or YaST. Use the *--installer* option to specify for
+There are currently Tumbleweed/Slowroll media with either Agama or YaST. Use the *--installer* option to specify for
 which variant you need the driver update in this case.
 
 With Agama:
