@@ -2096,6 +2096,9 @@ sub show_single_dir
       elsif("\L$key" eq 'updatename') {
         $sect{name} .= "      $val\n";
       }
+      elsif("\L$key" eq 'updateproduct') {
+        # ignore value; just make sure it does not end up in $sect{config}
+      }
       elsif("\L$key" eq 'updateallarchs') {
         $all_archs = $val;
       }
