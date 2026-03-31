@@ -17,6 +17,13 @@
 
 
 Name:           mkdud
+Version:        0.0
+Release:        0
+Summary:        Create driver update disks (DUD).
+License:        GPL-3.0-or-later
+Group:          Hardware/Other
+Source:         %{name}-%{version}.tar.xz
+URL:            https://github.com/openSUSE/mkdud
 Requires:       binutils
 Requires:       coreutils
 Requires:       cpio
@@ -34,13 +41,6 @@ Requires:       tar
 Requires:       util-linux
 Requires:       xz
 Requires:       zstd
-Summary:        Create driver update disks (DUD).
-License:        GPL-3.0-or-later
-Group:          Hardware/Other
-Version:        0.0
-Release:        0
-Source:         %{name}-%{version}.tar.xz
-Url:            https://github.com/openSUSE/mkdud
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildArch:      noarch
 
@@ -69,7 +69,7 @@ rm -rf %{buildroot}
 /usr/share/bash-completion
 %doc %{_mandir}/man1/mkdud.*
 %doc *.md
-%if 0%?suse_version >= 1500 || 0%?suse_version == 0
+%if 0%{?suse_version} >= 1500 || 0%{?suse_version} == 0
 %license COPYING
 %else
 %doc COPYING
